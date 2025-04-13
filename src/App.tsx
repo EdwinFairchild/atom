@@ -3,6 +3,7 @@ import TaskTimeline from './components/TaskTimeline';
 import TaskDetails from './components/TaskDetails';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
+import EventTable from './components/EventTable';
 import { parseLogFile } from './utils/parser';
 import { TaskData } from './types';
 import { defaultLogData } from './data/default-log';
@@ -18,6 +19,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskData | null>(null);
   const [hiddenTasks, setHiddenTasks] = useState<Set<string>>(new Set());
+  const [windowPosition, setWindowPosition] = useState(0);
 
   useEffect(() => {
     loadSettings();
@@ -66,6 +68,14 @@ function App() {
     setHiddenTasks(newHiddenTasks);
   };
 
+  const handleTaskSelect = (task: TaskData, shouldScroll = false) => {
+    setSelectedTask(task);
+    if (shouldScroll) {
+      // Update window position to show the selected task
+      setWindowPosition(Math.max(0, task.startTime - (windowSize / 4)));
+    }
+  };
+
   const visibleTasks = tasks.filter(task => !hiddenTasks.has(task.name));
 
   return (
@@ -92,34 +102,42 @@ function App() {
             />
           </div>
 
-          <div className="flex-1 flex gap-4 p-4">
-            <main className="flex-1 flex flex-col overflow-hidden">
-              <TopBar
-                tasks={tasks}
-                hiddenTasks={hiddenTasks}
-                onToggleTask={toggleTaskVisibility}
-                darkMode={darkMode}
-                onOpenSidebar={() => setSidebarOpen(true)}
-              />
-              <div className="flex-1 min-h-0">
-                <TaskTimeline 
-                  tasks={visibleTasks}
-                  cpuFrequency={cpuFrequency}
-                  windowSize={windowSize}
-                  showCrosshair={showCrosshair}
-                  onTaskSelect={setSelectedTask}
-                  darkMode={darkMode}
-                  selectedTask={selectedTask}
-                />
-              </div>
-            </main>
+          <div className="flex-1 flex flex-col gap-4 p-4">
+            <TopBar
+              tasks={tasks}
+              hiddenTasks={hiddenTasks}
+              onToggleTask={toggleTaskVisibility}
+              darkMode={darkMode}
+              onOpenSidebar={() => setSidebarOpen(true)}
+            />
             
-            <TaskDetails
-              task={selectedTask}
+            <EventTable
+              tasks={visibleTasks}
               cpuFrequency={cpuFrequency}
               darkMode={darkMode}
+              onEventSelect={handleTaskSelect}
             />
+
+            <div className="flex-1 min-h-0">
+              <TaskTimeline 
+                tasks={visibleTasks}
+                cpuFrequency={cpuFrequency}
+                windowSize={windowSize}
+                showCrosshair={showCrosshair}
+                onTaskSelect={handleTaskSelect}
+                darkMode={darkMode}
+                selectedTask={selectedTask}
+                windowPosition={windowPosition}
+                onWindowPositionChange={setWindowPosition}
+              />
+            </div>
           </div>
+          
+          <TaskDetails
+            task={selectedTask}
+            cpuFrequency={cpuFrequency}
+            darkMode={darkMode}
+          />
         </div>
       </div>
     </div>

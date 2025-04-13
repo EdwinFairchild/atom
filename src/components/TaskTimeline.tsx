@@ -10,6 +10,8 @@ interface TaskTimelineProps {
   onTaskSelect: (task: TaskData) => void;
   darkMode: boolean;
   selectedTask: TaskData | null;
+  windowPosition: number;
+  onWindowPositionChange: (position: number) => void;
 }
 
 const TaskTimeline: React.FC<TaskTimelineProps> = ({ 
@@ -19,14 +21,15 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   showCrosshair,
   onTaskSelect, 
   darkMode, 
-  selectedTask 
+  selectedTask,
+  windowPosition,
+  onWindowPositionChange
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const miniTimelineRef = useRef<SVGGElement | null>(null);
   const crosshairRef = useRef<SVGGElement | null>(null);
-  const [windowPosition, setWindowPosition] = useState<number>(0);
   const [mainZoom, setMainZoom] = useState<d3.ZoomTransform>(d3.zoomIdentity);
   const dragStartRef = useRef<{ x: number; position: number } | null>(null);
 
@@ -112,12 +115,16 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         .attr('class', 'tooltip')
         .style('position', 'absolute')
         .style('visibility', 'hidden')
+        .style('background-color', darkMode ? '#374151' : '#ffffff')
+        .style('border', `1px solid ${darkMode ? '#4B5563' : '#E5E7EB'}`)
         .style('border-radius', '0.375rem')
         .style('padding', '0.75rem')
+        .style('box-shadow', '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)')
         .style('pointer-events', 'none')
         .style('z-index', '50')
         .style('min-width', '200px')
         .style('font-size', '14px')
+        .style('color', darkMode ? '#ffffff' : '#111827')
         .node() as HTMLDivElement;
     }
   
