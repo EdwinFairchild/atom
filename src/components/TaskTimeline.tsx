@@ -121,14 +121,14 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         .node() as HTMLDivElement;
     }
   
-    // Update tooltip styles based on darkMode
+    // Update tooltip styles with glassmorphism effect
     d3.select(tooltipRef.current)
-      .style('background-color', darkMode ? '#1F2937' : '#ffffff')
-      .style('border', `1px solid ${darkMode ? '#374151' : '#E5E7EB'}`)
-      .style('box-shadow', darkMode 
-        ? '0 4px 6px -1px rgba(0, 0, 0, 0.9), 0 2px 4px -1px rgba(0, 0, 0, 0.7)' 
-        : '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)')
-      .style('color', darkMode ? '#D1D5DB' : '#111827');
+      .style('background-color', darkMode ? 'rgba(91, 91, 91, 0.15)' :'rgba(255, 255, 255, 0.15)') // Semi-transparent background for glass effect
+      .style('backdrop-filter', 'blur(8px)') // Frosted glass blur
+      .style('-webkit-backdrop-filter', 'blur(20px)') // For Safari support
+      .style('border', '1px solid rgba(255, 255, 255, 0.2)') // Subtle border
+      .style('box-shadow', '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)') // Subtle shadow
+      .style('color', darkMode ? '#E5E7EB' : '#111827'); // Dynamic text color for readability
   
     const mainGroup = svg.append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
