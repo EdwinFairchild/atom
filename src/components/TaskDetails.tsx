@@ -23,6 +23,8 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({ task, cpuFrequency, darkMode 
   const duration = (task.endTime - task.startTime) / cpuFrequency;
   const isRTOS = task.name === '_RTOS_';
   const isIdle = task.name === 'IDLE';
+  const isISR = task.name.startsWith('ISR:');
+  const isrName = isISR ? task.name.split(':')[1] : '';
 
   return (
     <div className="w-80 glass-morphism overflow-y-auto">
@@ -33,12 +35,16 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({ task, cpuFrequency, darkMode 
               <span className="text-red-500">RTOS Switch</span>
             ) : isIdle ? (
               <span className="text-gray-500">IDLE Task</span>
+            ) : isISR ? (
+              <span className="text-purple-500">ISR: {isrName}</span>
             ) : (
               task.name
             )}
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            {isRTOS ? 'FreeRTOS Task Switch Operation' : isIdle ? 'System Idle Process' : 'User Task'}
+            {isRTOS ? 'FreeRTOS Task Switch Operation' : 
+             isIdle ? 'System Idle Process' : 
+             isISR ? 'Interrupt Service Routine' : 'User Task'}
           </p>
         </div>
 
@@ -49,7 +55,7 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({ task, cpuFrequency, darkMode 
               <span className="font-medium">Duration</span>
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-800 dark:text-white">{duration.toFixed(3)} s</p>
+              <p className="text-2xl font-bold text-gray-800 dark:text-white">{duration.toFixed(6)} s</p>
               <p className="text-sm text-gray-600 dark:text-gray-300">
                 {task.endTime - task.startTime} cycles
               </p>
