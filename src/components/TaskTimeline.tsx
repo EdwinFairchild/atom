@@ -263,142 +263,114 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
           const dx = point[0] - dragStartRef.current.x;
           const newPosition = dragStartRef.current.position + xScaleMini.invert(dx) - xScaleMini.invert(0);
           const maxPosition = timeDomain[1] - windowWidth;
-          setWindowPosition(Math.max(timeDomain[0], Math.min(maxPosition, newPosition)));
+          onWindowPositionChange(Math.max(timeDomain[0], Math.min(maxPosition, newPosition)));
         }
       })
       .on("end", (event) => {
         d3.select(event.sourceEvent.target).style("cursor", "grab");
         dragStartRef.current = null;
       });
-  
+
     windowIndicator.call(drag as any);
-  
+
     const xAxis = d3.axisBottom(xScaleMain)
       .tickFormat(d => formatTime(d as number));
     
     const yAxis = d3.axisLeft(yScaleMain);
-  
+
     const xAxisGroup = mainGroup.append("g")
       .attr("class", "x-axis")
       .attr("transform", `translate(0,${height})`)
       .call(xAxis)
       .style("color", darkMode ? "#fff" : "#000");
-  
+
     xAxisGroup.selectAll("text")
       .style("text-anchor", "end")
       .style("font-size", "12px")
       .attr("dx", "-.8em")
       .attr("dy", ".15em")
       .attr("transform", "rotate(-45)");
-  
+
     const yAxisGroup = mainGroup.append("g")
       .attr("class", "y-axis")
       .call(yAxis)
       .style("color", darkMode ? "#fff" : "#000");
-  
+
     yAxisGroup.selectAll("text")
       .style("font-size", "12px");
-  
+
     const taskGroup = mainGroup.append("g")
       .attr("clip-path", "url(#clip)");
-  
+
     const updateTasks = () => {
       const currentXScale = mainZoom.rescaleX(xScaleMain);
-  
+
       const taskGroups = taskGroup.selectAll<SVGGElement, TaskData>("g.task")
         .data(visibleTasks, d => `${d.name}-${d.startTime}`);
-  
+
       taskGroups.exit().remove();
-  
+
       const newTaskGroups = taskGroups.enter()
         .append("g")
         .attr("class", "task");
-  
-      // Function to split a task into segments based on preemptions
-      const getTaskSegments = (task: TaskData) => {
-        const segments: { start: number, end: number, isPreempted: boolean }[] = [];
-        
-        if (!task.preemptions || task.preemptions.length === 0) {
-          segments.push({ start: task.startTime, end: task.endTime, isPreempted: false });
-          return segments;
-        }
-  
-        const sortedPreemptions = [...task.preemptions].sort((a, b) => a.startTime - b.startTime);
-        let currentTime = task.startTime;
-  
-        sortedPreemptions.forEach(preemption => {
-          if (currentTime < preemption.startTime) {
-            segments.push({
-              start: currentTime,
-              end: preemption.startTime,
-              isPreempted: false
-            });
-          }
-  
-          segments.push({
-            start: preemption.startTime,
-            end: preemption.endTime,
-            isPreempted: true
-          });
-  
-          currentTime = preemption.endTime;
-        });
-  
-        if (currentTime < task.endTime) {
-          segments.push({
-            start: currentTime,
-            end: task.endTime,
-            isPreempted: false
-          });
-        }
-  
-        return segments;
-      };
-  
+
+      newTaskGroups.append("rect")
+        .attr("class", "task-base")
+        .attr("x", d => currentXScale(d.startTime))
+        .attr("y", d => yScaleMain(d.name) || 0)
+        .attr("width", d => Math.max(2, currentXScale(d.endTime) - currentXScale(d.startTime)))
+        .attr("height", yScaleMain.bandwidth())
+        .attr("fill", d => colorScale(d.name))
+        .attr("fill-opacity", 0.5)
+        .attr("stroke", d => colorScale(d.name))
+        .attr("stroke-width", 1)
+        .attr("rx", d => d.name === '_RTOS_' ? 4 : 2);
+
       newTaskGroups.each(function(d) {
-        const group = d3.select(this);
-        const segments = getTaskSegments(d);
-  
-        segments.forEach(segment => {
-          group.append("rect")
-            .attr("class", segment.isPreempted ? "preemption-segment" : "normal-segment")
-            .attr("x", currentXScale(segment.start))
-            .attr("y", yScaleMain(d.name) || 0)
-            .attr("width", Math.max(2, currentXScale(segment.end) - currentXScale(segment.start)))
-            .attr("height", yScaleMain.bandwidth())
-            .attr("fill", colorScale(d.name))
-            .attr("fill-opacity", segment.isPreempted ? 0.3 : 0.5)
-            .attr("stroke", colorScale(d.name))
-            .attr("stroke-width", 1)
-            .attr("rx", d.name === '_RTOS_' ? 4 : 2);
-        });
+        if (d.preemptions && d.preemptions.length > 0) {
+          const group = d3.select(this);
+          
+          d.preemptions.forEach(preemption => {
+            group.append("rect")
+              .attr("class", "preemption")
+              .attr("x", currentXScale(preemption.startTime))
+              .attr("y", yScaleMain(d.name) || 0)
+              .attr("width", Math.max(2, currentXScale(preemption.endTime) - currentXScale(preemption.startTime)))
+              .attr("height", yScaleMain.bandwidth())
+              .attr("fill", d => colorScale(d.name))
+              .attr("fill-opacity", 0.2)
+              .attr("stroke", "none");
+          });
+        }
       });
-  
+
+      taskGroups.select("rect.task-base")
+        .attr("x", d => currentXScale(d.startTime))
+        .attr("width", d => Math.max(2, currentXScale(d.endTime) - currentXScale(d.startTime)));
+
       taskGroups.each(function(d) {
         const group = d3.select(this);
-        group.selectAll("rect").remove();
-  
-        const segments = getTaskSegments(d);
-        segments.forEach(segment => {
-          group.append("rect")
-            .attr("class", segment.isPreempted ? "preemption-segment" : "normal-segment")
-            .attr("x", currentXScale(segment.start))
-            .attr("y", yScaleMain(d.name) || 0)
-            .attr("width", Math.max(2, currentXScale(segment.end) - currentXScale(segment.start)))
-            .attr("height", yScaleMain.bandwidth())
-            .attr("fill", colorScale(d.name))
-            .attr("fill-opacity", segment.isPreempted ? 0.3 : 0.5)
-            .attr("stroke", colorScale(d.name))
-            .attr("stroke-width", 1)
-            .attr("rx", d.name === '_RTOS_' ? 4 : 2);
-        });
+        group.selectAll("rect.preemption").remove();
+        if (d.preemptions && d.preemptions.length > 0) {
+          d.preemptions.forEach(preemption => {
+            group.append("rect")
+              .attr("class", "preemption")
+              .attr("x", currentXScale(preemption.startTime))
+              .attr("y", yScaleMain(d.name) || 0)
+              .attr("width", Math.max(2, currentXScale(preemption.endTime) - currentXScale(preemption.startTime)))
+              .attr("height", yScaleMain.bandwidth())
+              .attr("fill", d => colorScale(d.name))
+              .attr("fill-opacity", 0.2)
+              .attr("stroke", "none");
+          });
+        }
       });
-  
+
       const handleTaskInteraction = (event: any, d: TaskData) => {
         const group = d3.select(event.currentTarget);
         if (d !== selectedTask) {
-          group.selectAll("rect.normal-segment")
-            .attr("fill-opacity", 1);
+          group.select("rect.task-base")
+            .attr("fill-opacity", 0.8);
         }
         
         const duration = ((d.endTime - d.startTime) / cpuFrequency * 1000).toFixed(3);
@@ -410,18 +382,18 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
               <div>Start: ${d.startTime}</div>
               <div>End: ${d.endTime}</div>
         `;
-  
+
         if (d.preemptions && d.preemptions.length > 0) {
           tooltipContent += `
             <div class="mt-2">
               <div class="font-medium">Preemptions:</div>
               ${d.preemptions.map(p => `
-                <div>${p.isrName}: runtime ${((p.endTime - p.startTime) / cpuFrequency * 1000).toFixed(3)}ms</div>
+                <div>${p.isrName}: ${((p.endTime - p.startTime) / cpuFrequency * 1000).toFixed(3)}ms</div>
               `).join('')}
             </div>
           `;
         }
-  
+
         tooltipContent += `</div></div>`;
         
         tooltipRef.current!.innerHTML = tooltipContent;
@@ -431,7 +403,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         tooltipRef.current!.style.left = `${mouse[0] + 10}px`;
         tooltipRef.current!.style.top = `${mouse[1] - 10}px`;
       };
-  
+
       newTaskGroups
         .on("click", (event, d) => onTaskSelect(d))
         .on("mouseover", handleTaskInteraction)
@@ -443,15 +415,15 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         .on("mouseout", function(event, d) {
           const group = d3.select(this);
           if (d !== selectedTask) {
-            group.selectAll("rect.normal-segment")
+            group.select("rect.task-base")
               .attr("fill-opacity", 0.5);
           }
           tooltipRef.current!.style.visibility = 'hidden';
         });
-  
+
       xAxisGroup.call(xAxis.scale(currentXScale));
     };
-  
+
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([1, 50])
       .extent([[0, 0], [width, height]])
@@ -459,13 +431,13 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         setMainZoom(event.transform);
         updateTasks();
       });
-  
+
     svg.call(zoom);
     
     if (mainZoom !== d3.zoomIdentity) {
       svg.call(zoom.transform, mainZoom);
     }
-  
+
     if (showCrosshair) {
       svg.on("mousemove", (event) => {
         const [x, y] = d3.pointer(event, mainGroup.node());
@@ -483,18 +455,18 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
           crosshairGroup.style("display", "none");
         }
       });
-  
+
       svg.on("mouseleave", () => {
         crosshairGroup.style("display", "none");
       });
     }
-  
+
     svg.on("click", (event) => {
       if (event.target === svg.node()) {
         onTaskSelect(null);
       }
     });
-  
+
     updateTasks();
   };
 
