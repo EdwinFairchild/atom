@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+.glass-morphism {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.dark .glass-morphism {
+  background: rgba(31, 32, 33, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.task-block {
+  transition: all 0.3s ease;
+}
+
+.task-block:hover {
+  filter: brightness(1.1) drop-shadow(0 0 8px rgba(0, 0, 0, 0.1));
+}
+
+.dark .task-block:hover {
+  filter: brightness(1.2) drop-shadow(0 0 8px rgba(0, 0, 0, 0.3));
+}
+
+body {
+  background: linear-gradient(135deg, #f6f7f9 0%, #e9edf2 100%);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  transition: all 0.3s ease;
+}
+
+body.dark {
+  background-image: url('/background_dark.png');
+}
+
+.sidebar-transition {
+  transition: transform 0.3s ease-in-out;
+}
+
+.modal-backdrop {
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(15px);
+  transition: opacity 0.3s ease;
+}
+
+.dark .modal-backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Modal animations */
+.modal-backdrop {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.glass-morphism[role="dialog"] {
+  animation: slideIn 0.3s ease forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
