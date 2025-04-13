@@ -72,7 +72,7 @@ function App() {
     setSelectedTask(task);
     if (shouldScroll) {
       // Update window position to show the selected task
-      setWindowPosition(Math.max(0, task.startTime - (windowSize / 4)));
+      setWindowPosition(Math.max(0, task.startTime - (windowSize / 2)));
     }
   };
 

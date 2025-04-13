@@ -302,127 +302,140 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
     const taskGroup = mainGroup.append("g")
       .attr("clip-path", "url(#clip)");
 
-    const updateTasks = () => {
-      const currentXScale = mainZoom.rescaleX(xScaleMain);
-
-      const taskGroups = taskGroup.selectAll<SVGGElement, TaskData>("g.task")
-        .data(visibleTasks, d => `${d.name}-${d.startTime}`);
-
-      taskGroups.exit().remove();
-
-      const newTaskGroups = taskGroups.enter()
-        .append("g")
-        .attr("class", "task");
-
-      newTaskGroups.append("rect")
-        .attr("class", "task-base")
-        .attr("x", d => currentXScale(d.startTime))
-        .attr("y", d => yScaleMain(d.name) || 0)
-        .attr("width", d => Math.max(2, currentXScale(d.endTime) - currentXScale(d.startTime)))
-        .attr("height", yScaleMain.bandwidth())
-        .attr("fill", d => colorScale(d.name))
-        .attr("fill-opacity", 0.5)
-        .attr("stroke", d => colorScale(d.name))
-        .attr("stroke-width", 1)
-        .attr("rx", d => d.name === '_RTOS_' ? 4 : 2);
-
-      newTaskGroups.each(function(d) {
-        if (d.preemptions && d.preemptions.length > 0) {
+      const updateTasks = () => {
+        const currentXScale = mainZoom.rescaleX(xScaleMain);
+      
+        const taskGroups = taskGroup.selectAll<SVGGElement, TaskData>("g.task")
+          .data(visibleTasks, d => `${d.name}-${d.startTime}`);
+      
+        taskGroups.exit().remove();
+      
+        const newTaskGroups = taskGroups.enter()
+          .append("g")
+          .attr("class", "task");
+      
+        newTaskGroups.append("rect")
+          .attr("class", "task-base")
+          .attr("x", d => currentXScale(d.startTime))
+          .attr("y", d => yScaleMain(d.name) || 0)
+          .attr("width", d => Math.max(2, currentXScale(d.endTime) - currentXScale(d.startTime)))
+          .attr("height", yScaleMain.bandwidth())
+          .attr("fill", d => colorScale(d.name))
+          .attr("fill-opacity", d => d === selectedTask ? 1 : 0.5) // Set opacity based on selection
+          .attr("stroke", d => colorScale(d.name))
+          .attr("stroke-width", 1)
+          .attr("rx", d => d.name === '_RTOS_' ? 4 : 2);
+      
+        newTaskGroups.each(function(d) {
+          if (d.preemptions && d.preemptions.length > 0) {
+            const group = d3.select(this);
+            
+            d.preemptions.forEach(preemption => {
+              group.append("rect")
+                .attr("class", "preemption")
+                .attr("x", currentXScale(preemption.startTime))
+                .attr("y", yScaleMain(d.name) || 0)
+                .attr("width", Math.max(2, currentXScale(preemption.endTime) - currentXScale(preemption.startTime)))
+                .attr("height", yScaleMain.bandwidth())
+                .attr("fill", d => colorScale(d.name))
+                .attr("fill-opacity", 0.1)
+                .attr("stroke", "none");
+            });
+          }
+        });
+      
+        taskGroups.select("rect.task-base")
+          .attr("x", d => currentXScale(d.startTime))
+          .attr("width", d => Math.max(2, currentXScale(d.endTime) - currentXScale(d.startTime)))
+          .attr("fill-opacity", d => d === selectedTask ? 1 : 0.4); // Update opacity for existing tasks
+      
+        taskGroups.each(function(d) {
           const group = d3.select(this);
-          
-          d.preemptions.forEach(preemption => {
-            group.append("rect")
-              .attr("class", "preemption")
-              .attr("x", currentXScale(preemption.startTime))
-              .attr("y", yScaleMain(d.name) || 0)
-              .attr("width", Math.max(2, currentXScale(preemption.endTime) - currentXScale(preemption.startTime)))
-              .attr("height", yScaleMain.bandwidth())
-              .attr("fill", d => colorScale(d.name))
-              .attr("fill-opacity", 0.2)
-              .attr("stroke", "none");
-          });
-        }
-      });
-
-      taskGroups.select("rect.task-base")
-        .attr("x", d => currentXScale(d.startTime))
-        .attr("width", d => Math.max(2, currentXScale(d.endTime) - currentXScale(d.startTime)));
-
-      taskGroups.each(function(d) {
-        const group = d3.select(this);
-        group.selectAll("rect.preemption").remove();
-        if (d.preemptions && d.preemptions.length > 0) {
-          d.preemptions.forEach(preemption => {
-            group.append("rect")
-              .attr("class", "preemption")
-              .attr("x", currentXScale(preemption.startTime))
-              .attr("y", yScaleMain(d.name) || 0)
-              .attr("width", Math.max(2, currentXScale(preemption.endTime) - currentXScale(preemption.startTime)))
-              .attr("height", yScaleMain.bandwidth())
-              .attr("fill", d => colorScale(d.name))
-              .attr("fill-opacity", 0.2)
-              .attr("stroke", "none");
-          });
-        }
-      });
-
-      const handleTaskInteraction = (event: any, d: TaskData) => {
-        const group = d3.select(event.currentTarget);
-        if (d !== selectedTask) {
+          group.selectAll("rect.preemption").remove();
+          if (d.preemptions && d.preemptions.length > 0) {
+            d.preemptions.forEach(preemption => {
+              group.append("rect")
+                .attr("class", "preemption")
+                .attr("x", currentXScale(preemption.startTime))
+                .attr("y", yScaleMain(d.name) || 0)
+                .attr("width", Math.max(2, currentXScale(preemption.endTime) - currentXScale(preemption.startTime)))
+                .attr("height", yScaleMain.bandwidth())
+                .attr("fill", d => colorScale(d.name))
+                .attr("fill-opacity", 0.1)
+                .attr("stroke", "none");
+            });
+          }
+        });
+      
+        const handleTaskInteraction = (event: any, d: TaskData) => {
+          const group = d3.select(event.currentTarget);
           group.select("rect.task-base")
-            .attr("fill-opacity", 0.8);
-        }
-        
-        const duration = ((d.endTime - d.startTime) / cpuFrequency * 1000).toFixed(3);
-        let tooltipContent = `
-          <div class="space-y-1">
-            <div class="font-medium ${darkMode ? 'text-white' : 'text-gray-900'}">${d.name}</div>
-            <div class="space-y-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-600'}">
-              <div>Duration: ${duration}ms</div>
-              <div>Start: ${d.startTime}</div>
-              <div>End: ${d.endTime}</div>
-        `;
-
-        if (d.preemptions && d.preemptions.length > 0) {
-          tooltipContent += `
-            <div class="mt-2">
-              <div class="font-medium">Preemptions:</div>
-              ${d.preemptions.map(p => `
-                <div>${p.isrName}: ${((p.endTime - p.startTime) / cpuFrequency * 1000).toFixed(3)}ms</div>
-              `).join('')}
-            </div>
+            .attr("fill-opacity",1); // Match hover with selected state
+          
+          const duration = ((d.endTime - d.startTime) / cpuFrequency * 1000).toFixed(3);
+          let tooltipContent = `
+            <div class="space-y-1">
+              <div class="font-medium ${darkMode ? 'text-white' : 'text-gray-900'}">${d.name}</div>
+              <div class="space-y-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-600'}">
+                <div>Duration: ${duration}ms</div>
+                <div>Start: ${d.startTime}</div>
+                <div>End: ${d.endTime}</div>
           `;
-        }
-
-        tooltipContent += `</div></div>`;
-        
-        tooltipRef.current!.innerHTML = tooltipContent;
-        tooltipRef.current!.style.visibility = 'visible';
-        
-        const mouse = d3.pointer(event, containerRef.current);
-        tooltipRef.current!.style.left = `${mouse[0] + 10}px`;
-        tooltipRef.current!.style.top = `${mouse[1] - 10}px`;
-      };
-
-      newTaskGroups
-        .on("click", (event, d) => onTaskSelect(d))
-        .on("mouseover", handleTaskInteraction)
-        .on("mousemove", (event) => {
+      
+          if (d.preemptions && d.preemptions.length > 0) {
+            tooltipContent += `
+              <div class="mt-2">
+                <div class="font-medium">Preemptions:</div>
+                ${d.preemptions.map(p => `
+                  <div>${p.isrName}: ${((p.endTime - p.startTime) / cpuFrequency * 1000).toFixed(3)}ms</div>
+                `).join('')}
+              </div>
+            `;
+          }
+      
+          tooltipContent += `</div></div>`;
+          
+          tooltipRef.current!.innerHTML = tooltipContent;
+          tooltipRef.current!.style.visibility = 'visible';
+          
           const mouse = d3.pointer(event, containerRef.current);
           tooltipRef.current!.style.left = `${mouse[0] + 10}px`;
           tooltipRef.current!.style.top = `${mouse[1] - 10}px`;
-        })
-        .on("mouseout", function(event, d) {
-          const group = d3.select(this);
-          if (d !== selectedTask) {
-            group.select("rect.task-base")
-              .attr("fill-opacity", 0.5);
-          }
-          tooltipRef.current!.style.visibility = 'hidden';
-        });
-
-      xAxisGroup.call(xAxis.scale(currentXScale));
-    };
+        };
+      
+        newTaskGroups
+          .on("click", (event, d) => {
+            onTaskSelect(d);
+            // The selected task will have its opacity set to 0.8 in the next render cycle
+          })
+          .on("mouseover", handleTaskInteraction)
+          .on("mousemove", (event) => {
+            const mouse = d3.pointer(event, containerRef.current);
+            tooltipRef.current!.style.left = `${mouse[0] + 10}px`;
+            tooltipRef.current!.style.top = `${mouse[1] - 10}px`;
+          })
+          .on("mouseout", function(event, d) {
+            const group = d3.select(this);
+            if (d !== selectedTask) {
+              group.select("rect.task-base")
+                .attr("fill-opacity", 0.5); // Revert to default if not selected
+            }
+            tooltipRef.current!.style.visibility = 'hidden';
+          });
+      
+        xAxisGroup.call(xAxis.scale(currentXScale));
+      };
+      
+      // Update the SVG click handler to revert all tasks to default opacity
+      svg.on("click", (event) => {
+        if (event.target === svg.node()) {
+          onTaskSelect(null);
+          // Revert all tasks to default opacity
+          taskGroup.selectAll<SVGGElement, TaskData>("g.task")
+            .select("rect.task-base")
+            .attr("fill-opacity", 0.5);
+        }
+      });
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([1, 50])
