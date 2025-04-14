@@ -298,6 +298,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   
     const drag = d3.drag<SVGRectElement, unknown>()
       .on("start", (event) => {
+         // Hide tooltip when dragging mini timeline
+         if (tooltipRef.current) {
+          tooltipRef.current.style.visibility = 'hidden';
+        }
         d3.select(event.sourceEvent.target).style("cursor", "grabbing");
         const miniTimelineNode = miniTimelineRef.current;
         if (miniTimelineNode) {
@@ -511,9 +515,13 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
     };
   
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([1, 50])
+      .scaleExtent([1, 5000])
       .extent([[0, 0], [width, height]])
       .on("zoom", (event) => {
+        // Hide tooltip when zooming/dragging begins
+        if (tooltipRef.current) {
+          tooltipRef.current.style.visibility = 'hidden';
+        }
         setMainZoom(event.transform);
         updateTasks();
       });
