@@ -60,13 +60,32 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   }, [tasks, windowPosition, windowWidth, windowSize]);
 
   const taskNames = useMemo(() => {
+    if (!tasks.length) return [];
     return Array.from(new Set(tasks.map(t => t.name))).sort((a, b) => {
+      // Handle null/undefined cases
+      if (!a || !b) return 0;
+      
+      // Sort ISRs to the top
       if (a.startsWith('ISR:') && !b.startsWith('ISR:')) return -1;
       if (!a.startsWith('ISR:') && b.startsWith('ISR:')) return 1;
-      if (a === '_RTOS_') return 1;
-      if (b === '_RTOS_') return -1;
-      if (a === 'IDLE') return b === '_RTOS_' ? -1 : 1;
-      if (b === 'IDLE') return a === '_RTOS_' ? 1 : -1;
+      
+      // Sort RTOS events
+      if (a === '_RTOS_' || a.startsWith('RTOS:')) {
+        if (b === '_RTOS_' || b.startsWith('RTOS:')) {
+          // If both are RTOS events, sort Create events after other RTOS events
+          if (a.startsWith('RTOS:Create') && !b.startsWith('RTOS:Create')) return 1;
+          if (!a.startsWith('RTOS:Create') && b.startsWith('RTOS:Create')) return -1;
+          return a.localeCompare(b);
+        }
+        return 1; // RTOS events go to the bottom
+      }
+      if (b === '_RTOS_' || b.startsWith('RTOS:')) return -1;
+      
+      // Sort IDLE task
+      if (a === 'IDLE') return b === '_RTOS_' || b.startsWith('RTOS:') ? -1 : 1;
+      if (b === 'IDLE') return a === '_RTOS_' || a.startsWith('RTOS:') ? 1 : -1;
+      
+      // Default alphabetical sort for other tasks
       return a.localeCompare(b);
     });
   }, [tasks]);
@@ -77,7 +96,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   };
 
   const getTaskColor = (taskName: string) => {
-    if (taskName === '_RTOS_') return '#FF4444';
+    if (!taskName) return '#000000'; // Default color for undefined/null
+    if (taskName === '_RTOS_' || taskName.startsWith('RTOS:')) {
+      return taskName.startsWith('RTOS:Create') ? '#FF8C00' : '#FF4444'; // Orange for Create, Red for other RTOS
+    }
     if (taskName === 'IDLE') return '#9CA3AF';
     if (taskName.startsWith('ISR:')) return '#9333EA';
     return d3.schemeCategory10[taskNames.indexOf(taskName) % 10];
