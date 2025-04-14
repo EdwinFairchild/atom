@@ -34,27 +34,35 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   const dragStartRef = useRef<{ x: number; position: number } | null>(null);
 
   const timeDomain = useMemo(() => {
-    const start = d3.min(tasks, d => d.startTime) || 0;
-    const end = d3.max(tasks, d => d.endTime) || 0;
-    return [start, end] as [number, number];
+    if (!tasks.length) return [BigInt(0), BigInt(0)] as [bigint, bigint];
+    const start = tasks.reduce((min, d) => d.startTime < min ? d.startTime : min, tasks[0].startTime);
+    const end = tasks.reduce((max, d) => d.endTime > max ? d.endTime : max, tasks[0].endTime);
+    return [start, end] as [bigint, bigint];
   }, [tasks]);
 
   const windowWidth = useMemo(() => {
-    if (!tasks.length) return 0;
-    const sortedTasks = [...tasks].sort((a, b) => a.startTime - b.startTime);
+    if (!tasks.length) return BigInt(0);
+    const sortedTasks = [...tasks].sort((a, b) => 
+      a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0
+    );
     const tasksInWindow = sortedTasks.slice(0, windowSize);
-    return tasksInWindow[tasksInWindow.length - 1]?.endTime - tasksInWindow[0]?.startTime;
+    return tasksInWindow[tasksInWindow.length - 1]?.endTime - tasksInWindow[0]?.startTime || BigInt(0);
   }, [tasks, windowSize]);
 
   const visibleTasks = useMemo(() => {
     if (!tasks.length) return [];
-    const windowEnd = windowPosition + windowWidth;
+    const windowEnd = BigInt(windowPosition) + windowWidth;
+    const windowStart = BigInt(windowPosition);
+    
     return tasks
-      .filter(task => task.startTime >= windowPosition && task.startTime <= windowEnd)
+      .filter(task => {
+        const taskStart = task.startTime;
+        return taskStart >= windowStart && taskStart <= windowEnd;
+      })
       .sort((a, b) => {
         if (a.name.startsWith('ISR:') && !b.name.startsWith('ISR:')) return -1;
         if (!a.name.startsWith('ISR:') && b.name.startsWith('ISR:')) return 1;
-        return a.startTime - b.startTime;
+        return a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0;
       })
       .slice(0, windowSize);
   }, [tasks, windowPosition, windowWidth, windowSize]);
@@ -90,9 +98,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
     });
   }, [tasks]);
 
-  const formatTime = (cycles: number) => {
-    const seconds = cycles / cpuFrequency;
-    return seconds.toFixed(6) + 's';
+  const formatTime = (cycles: bigint) => {
+    return (Number(cycles) / cpuFrequency).toFixed(6) + 's';
   };
 
   const getTaskColor = (taskName: string) => {
@@ -211,11 +218,11 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
       .attr("height", height);
   
     const xScaleMini = d3.scaleLinear()
-      .domain(timeDomain)
+      .domain([Number(timeDomain[0]), Number(timeDomain[1])])
       .range([0, width]);
   
     const xScaleMain = d3.scaleLinear()
-      .domain([windowPosition, windowPosition + windowWidth])
+      .domain([Number(BigInt(windowPosition)), Number(BigInt(windowPosition) + windowWidth)])
       .range([0, width]);
   
     const yScaleMain = d3.scaleBand()
@@ -244,8 +251,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
     const bins = new Array(Math.ceil(width / binSize)).fill(0);
     
     tasks.forEach(task => {
-      const startBin = Math.floor(xScaleMini(task.startTime) / binSize);
-      const endBin = Math.floor(xScaleMini(task.endTime) / binSize);
+      const startBin = Math.floor(xScaleMini(Number(task.startTime)) / binSize);
+      const endBin = Math.floor(xScaleMini(Number(task.endTime)) / binSize);
       for (let i = startBin; i <= endBin && i < bins.length; i++) {
         if (i >= 0) bins[i]++;
       }
@@ -281,7 +288,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   
     const updateWindowIndicator = () => {
       const x = xScaleMini(windowPosition);
-      const width = xScaleMini(windowPosition + windowWidth) - x;
+      const width = xScaleMini(windowPosition + Number(windowWidth)) - x;
       windowIndicator
         .attr("x", x)
         .attr("width", width);
@@ -305,9 +312,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         if (dragStartRef.current && miniTimelineRef.current) {
           const point = d3.pointer(event.sourceEvent, miniTimelineRef.current);
           const dx = point[0] - dragStartRef.current.x;
-          const newPosition = dragStartRef.current.position + xScaleMini.invert(dx) - xScaleMini.invert(0);
-          const maxPosition = timeDomain[1] - windowWidth;
-          onWindowPositionChange(Math.max(timeDomain[0], Math.min(maxPosition, newPosition)));
+          const newPosition = dragStartRef.current.position + 
+            Math.floor(Number(timeDomain[1] - timeDomain[0]) * dx / width);
+          const maxPosition = Number(timeDomain[1] - windowWidth);
+          onWindowPositionChange(Math.max(Number(timeDomain[0]), Math.min(maxPosition, newPosition)));
         }
       })
       .on("end", (event) => {
@@ -318,7 +326,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
     windowIndicator.call(drag as any);
   
     const xAxis = d3.axisBottom(xScaleMain)
-      .tickFormat(d => formatTime(d as number));
+      .tickFormat(d => formatTime(BigInt(d as number)));
     
     const yAxis = d3.axisLeft(yScaleMain);
   
@@ -360,14 +368,16 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   
       // Function to split a task into segments based on preemptions
       const getTaskSegments = (task: TaskData) => {
-        const segments: { start: number, end: number, isPreempted: boolean }[] = [];
+        const segments: { start: bigint, end: bigint, isPreempted: boolean }[] = [];
         
         if (!task.preemptions || task.preemptions.length === 0) {
           segments.push({ start: task.startTime, end: task.endTime, isPreempted: false });
           return segments;
         }
   
-        const sortedPreemptions = [...task.preemptions].sort((a, b) => a.startTime - b.startTime);
+        const sortedPreemptions = [...task.preemptions].sort((a, b) => 
+          a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0
+        );
         let currentTime = task.startTime;
   
         sortedPreemptions.forEach(preemption => {
@@ -406,16 +416,16 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         segments.forEach(segment => {
           group.append("rect")
             .attr("class", segment.isPreempted ? "preemption-segment" : "normal-segment")
-            .attr("x", currentXScale(segment.start))
+            .attr("x", currentXScale(Number(segment.start)))
             .attr("y", yScaleMain(d.name) || 0)
-            .attr("width", Math.max(2, currentXScale(segment.end) - currentXScale(segment.start)))
+            .attr("width", Math.max(2, currentXScale(Number(segment.end)) - currentXScale(Number(segment.start))))
             .attr("height", yScaleMain.bandwidth())
             .attr("fill", colorScale(d.name))
             .attr("fill-opacity", segment.isPreempted ? 0.3 : (d === selectedTask ? 1 : 0.5))
             .attr("stroke", colorScale(d.name))
             .attr("stroke-width", 1)
-            .attr("rx", d.name === '_RTOS_' ? 4 : 2)
-            .attr("filter", d === selectedTask ? "url(#glow)" : ""); // Apply glow to selected task
+            .attr("rx", d.name === '_RTOS_' || d.name.startsWith('RTOS:') ? 4 : 2)
+            .attr("filter", d === selectedTask ? "url(#glow)" : "");
         });
       });
   
@@ -427,16 +437,16 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         segments.forEach(segment => {
           group.append("rect")
             .attr("class", segment.isPreempted ? "preemption-segment" : "normal-segment")
-            .attr("x", currentXScale(segment.start))
+            .attr("x", currentXScale(Number(segment.start)))
             .attr("y", yScaleMain(d.name) || 0)
-            .attr("width", Math.max(2, currentXScale(segment.end) - currentXScale(segment.start)))
+            .attr("width", Math.max(2, currentXScale(Number(segment.end)) - currentXScale(Number(segment.start))))
             .attr("height", yScaleMain.bandwidth())
             .attr("fill", colorScale(d.name))
             .attr("fill-opacity", segment.isPreempted ? 0.3 : (d === selectedTask ? 1 : 0.5))
             .attr("stroke", colorScale(d.name))
             .attr("stroke-width", 1)
-            .attr("rx", d.name === '_RTOS_' ? 4 : 2)
-            .attr("filter", d === selectedTask ? "url(#glow)" : ""); // Apply glow to selected task
+            .attr("rx", d.name === '_RTOS_' || d.name.startsWith('RTOS:') ? 4 : 2)
+            .attr("filter", d === selectedTask ? "url(#glow)" : "");
         });
       });
   
@@ -445,10 +455,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         if (d !== selectedTask) {
           group.selectAll("rect.normal-segment")
             .attr("fill-opacity", 1)
-            .attr("filter", "url(#glow)"); // Apply glow on hover
+            .attr("filter", "url(#glow)");
         }
         
-        const duration = ((d.endTime - d.startTime) / cpuFrequency * 1000).toFixed(3);
+        const duration = (Number(d.endTime - d.startTime) / cpuFrequency * 1000).toFixed(3);
         let tooltipContent = `
           <div class="space-y-1">
             <div class="font-medium ${darkMode ? 'text-white' : 'text-gray-900'}">${d.name}</div>
@@ -463,7 +473,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
             <div class="mt-2">
               <div class="font-medium">Preemptions:</div>
               ${d.preemptions.map(p => `
-                <div>${p.isrName}: runtime ${((p.endTime - p.startTime) / cpuFrequency * 1000).toFixed(3)}ms</div>
+                <div>${p.isrName}: runtime ${(Number(p.endTime - p.startTime) / cpuFrequency * 1000).toFixed(3)}ms</div>
               `).join('')}
             </div>
           `;
@@ -492,7 +502,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
           if (d !== selectedTask) {
             group.selectAll("rect.normal-segment")
               .attr("fill-opacity", 0.5)
-              .attr("filter", ""); // Remove glow on mouseout
+              .attr("filter", "");
           }
           tooltipRef.current!.style.visibility = 'hidden';
         });
@@ -519,7 +529,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         const [x, y] = d3.pointer(event, mainGroup.node());
         if (x >= 0 && x <= width && y >= 0 && y <= height) {
           const currentXScale = mainZoom.rescaleX(xScaleMain);
-          const time = currentXScale.invert(x);
+          const time = BigInt(Math.round(currentXScale.invert(x)));
           
           crosshairLine.attr("x1", x).attr("x2", x);
           crosshairLabel
@@ -543,7 +553,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         taskGroup.selectAll<SVGGElement, TaskData>("g.task")
           .selectAll("rect.normal-segment")
           .attr("fill-opacity", 0.5)
-          .attr("filter", ""); // Remove glow on deselect
+          .attr("filter", "");
       }
     });
   

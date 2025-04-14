@@ -1,20 +1,20 @@
 export interface TaskStats {
-  totalRunTime: number;          // Including preemptions
-  actualRunTime: number;         // Excluding preemptions
+  totalRunTime: bigint;          // Including preemptions
+  actualRunTime: bigint;         // Excluding preemptions
   runCount: number;              // Number of times this task has run
   cpuLoad: number;              // CPU load percentage
-  averageRunTime: number;        // Average runtime per execution
+  averageRunTime: bigint;        // Average runtime per execution
   preemptionCount: number;       // Number of times task was preempted
-  totalPreemptionTime: number;   // Total time spent in preemptions
+  totalPreemptionTime: bigint;   // Total time spent in preemptions
 }
 
 export interface TaskData {
   name: string;
-  startTime: number;
-  endTime: number;
+  startTime: bigint;
+  endTime: bigint;
   preemptions?: Array<{
-    startTime: number;
-    endTime: number;
+    startTime: bigint;
+    endTime: bigint;
     isrName: string;
   }>;
   stats?: TaskStats;
@@ -22,7 +22,7 @@ export interface TaskData {
 
 // Define the Preemption type explicitly for clarity and reuse
 export interface Preemption {
-  startTime: bigint;    // Use bigint for preemption timestamps
-  endTime: bigint;      // Use bigint for preemption timestamps
+  startTime: bigint;
+  endTime: bigint;
   isrName: string;
 }

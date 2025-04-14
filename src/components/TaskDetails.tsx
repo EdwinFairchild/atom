@@ -20,17 +20,17 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({ task, cpuFrequency, darkMode 
     );
   }
 
-  const duration = (task.endTime - task.startTime) / cpuFrequency;
+  const duration = Number(task.endTime - task.startTime) / cpuFrequency;
   const isRTOS = task.name === '_RTOS_' || task.name.startsWith('RTOS:');
   const isIdle = task.name === 'IDLE';
   const isISR = task.name.startsWith('ISR:');
   const isTaskCreate = task.name.startsWith('RTOS:Create');
-  const taskName = isTaskCreate ? task.name.substring(12) : // Remove 'RTOS:Create ' prefix
+  const taskName = isTaskCreate ? task.name.substring(12) : 
                    isISR ? task.name.split(':')[1] :
                    task.name;
 
-  const formatTime = (cycles: number) => {
-    return (cycles / cpuFrequency * 1000).toFixed(3) + 'ms';
+  const formatTime = (cycles: bigint) => {
+    return (Number(cycles) / cpuFrequency * 1000).toFixed(3) + 'ms';
   };
 
   const formatPercentage = (value: number) => {
@@ -72,18 +72,24 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({ task, cpuFrequency, darkMode 
             <div className="space-y-2">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-300">Current Duration</p>
-                <p className="text-xl font-bold text-gray-800 dark:text-white">{formatTime(task.endTime - task.startTime)}</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-white">
+                  {formatTime(task.endTime - task.startTime)}
+                </p>
               </div>
               {task.stats && !isTaskCreate && !isRTOS && (
                 <>
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-300">Average Runtime</p>
-                    <p className="text-xl font-bold text-gray-800 dark:text-white">{formatTime(task.stats.averageRunTime)}</p>
+                    <p className="text-xl font-bold text-gray-800 dark:text-white">
+                      {formatTime(task.stats.averageRunTime)}
+                    </p>
                   </div>
                   {task.stats.preemptionCount > 0 && (
                     <div>
                       <p className="text-sm text-gray-600 dark:text-gray-300">Time in Preemption</p>
-                      <p className="text-xl font-bold text-gray-800 dark:text-white">{formatTime(task.stats.totalPreemptionTime)}</p>
+                      <p className="text-xl font-bold text-gray-800 dark:text-white">
+                        {formatTime(task.stats.totalPreemptionTime)}
+                      </p>
                     </div>
                   )}
                 </>
@@ -142,11 +148,11 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({ task, cpuFrequency, darkMode 
             <div className="space-y-1">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-300">Start Time</p>
-                <p className="font-mono text-gray-800 dark:text-white">{task.startTime}</p>
+                <p className="font-mono text-gray-800 dark:text-white">{task.startTime.toString(16).toUpperCase()}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-300">End Time</p>
-                <p className="font-mono text-gray-800 dark:text-white">{task.endTime}</p>
+                <p className="font-mono text-gray-800 dark:text-white">{task.endTime.toString(16).toUpperCase()}</p>
               </div>
             </div>
           </div>

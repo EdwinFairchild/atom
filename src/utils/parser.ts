@@ -2,10 +2,10 @@ import { TaskData, TaskStats } from '../types';
 
 function sortTaskName(a: string, b: string): number {
   // Special handling for IDLE, _RTOS_, and ISR tasks
-  if (a === '_RTOS_') return 1;
-  if (b === '_RTOS_') return -1;
-  if (a === 'IDLE') return b === '_RTOS_' ? -1 : 1;
-  if (b === 'IDLE') return a === '_RTOS_' ? 1 : -1;
+  if (a === '_RTOS_' || a.startsWith('RTOS:')) return 1;
+  if (b === '_RTOS_' || b.startsWith('RTOS:')) return -1;
+  if (a === 'IDLE') return b === '_RTOS_' || b.startsWith('RTOS:') ? -1 : 1;
+  if (b === 'IDLE') return a === '_RTOS_' || a.startsWith('RTOS:') ? 1 : -1;
   if (a.startsWith('ISR:')) return 1;
   if (b.startsWith('ISR:')) return -1;
   return a.localeCompare(b);
@@ -13,26 +13,25 @@ function sortTaskName(a: string, b: string): number {
 
 function calculateTaskStats(tasks: TaskData[]): void {
   // Get total timeline duration
-  const timelineStart = Math.min(...tasks.map(t => t.startTime));
-  const timelineEnd = Math.max(...tasks.map(t => t.endTime));
+  const timelineStart = tasks.reduce((min, t) => t.startTime < min ? t.startTime : min, tasks[0].startTime);
+  const timelineEnd = tasks.reduce((max, t) => t.endTime > max ? t.endTime : max, tasks[0].endTime);
   const totalTimelineDuration = timelineEnd - timelineStart;
 
   // Check for invalid duration
-  if (totalTimelineDuration <= 0) {
-    console.error("Invalid timeline duration calculated:", totalTimelineDuration, "Start:", timelineStart, "End:", timelineEnd);
-    // Assign default stats or handle error appropriately
+  if (totalTimelineDuration <= BigInt(0)) {
+    console.error("Invalid timeline duration calculated");
     tasks.forEach(task => {
       task.stats = {
-        totalRunTime: 0,
-        actualRunTime: 0,
+        totalRunTime: BigInt(0),
+        actualRunTime: BigInt(0),
         runCount: 0,
         cpuLoad: 0,
-        averageRunTime: 0,
+        averageRunTime: BigInt(0),
         preemptionCount: 0,
-        totalPreemptionTime: 0
+        totalPreemptionTime: BigInt(0)
       };
     });
-    return; // Avoid division by zero or non-sensical calculations
+    return;
   }
 
   // Group tasks by name to calculate statistics
@@ -44,61 +43,47 @@ function calculateTaskStats(tasks: TaskData[]): void {
   });
 
   // Calculate stats for each task group
-  taskGroups.forEach((taskInstances, taskName) => { // taskInstances is defined HERE
-    let totalRunTime = 0;
-    let actualRunTime = 0; // Net run time (excluding time spent in preempting ISRs)
-    let totalPreemptionTime = 0; // Time *this* task was preempted by ISRs
+  taskGroups.forEach((taskInstances, taskName) => {
+    let totalRunTime = BigInt(0);
+    let actualRunTime = BigInt(0);
+    let totalPreemptionTime = BigInt(0);
     let preemptionCount = 0;
 
     taskInstances.forEach(task => {
-      // Ensure endTime is not before startTime
-      const duration = task.endTime >= task.startTime ? task.endTime - task.startTime : 0;
+      const duration = task.endTime >= task.startTime ? task.endTime - task.startTime : BigInt(0);
       totalRunTime += duration;
 
-      let preemptionTimeForThisSlice = 0;
+      let preemptionTimeForThisSlice = BigInt(0);
       if (task.preemptions && task.preemptions.length > 0) {
         preemptionCount += task.preemptions.length;
         preemptionTimeForThisSlice = task.preemptions.reduce((acc, p) => {
-          // Ensure valid preemption times
-          const pDuration = p.endTime > p.startTime ? p.endTime - p.startTime : 0;
+          const pDuration = p.endTime > p.startTime ? p.endTime - p.startTime : BigInt(0);
           return acc + pDuration;
-        }, 0);
+        }, BigInt(0));
 
-        // Sanity check: preemption time shouldn't exceed the task slice duration
-        preemptionTimeForThisSlice = Math.min(preemptionTimeForThisSlice, duration);
+        preemptionTimeForThisSlice = preemptionTimeForThisSlice > duration ? duration : preemptionTimeForThisSlice;
         totalPreemptionTime += preemptionTimeForThisSlice;
       }
-      // Actual run time is the slice duration minus any time an ISR ran during that slice
-      actualRunTime += Math.max(0, duration - preemptionTimeForThisSlice); // Ensure non-negative
+      actualRunTime += duration - preemptionTimeForThisSlice;
     });
 
-    // *** CORRECTED CPU LOAD CALCULATION ***
-    // Use actualRunTime for all task types as the numerator,
-    // representing the net time the CPU spent on behalf of this task/state.
-    // Use totalTimelineDuration as the consistent denominator.
-    const cpuLoad = (actualRunTime / totalTimelineDuration) * 100;
+    // Calculate CPU load using BigInt arithmetic and convert to number at the end
+    const cpuLoad = Number((actualRunTime * BigInt(10000) / totalTimelineDuration)) / 100;
 
     const stats: TaskStats = {
-      totalRunTime, // Gross time slices assigned to the task
-      actualRunTime, // Net time CPU executed task code (excluding ISR preemptions)
+      totalRunTime,
+      actualRunTime,
       runCount: taskInstances.length,
-      cpuLoad: Math.max(0, Math.min(100, cpuLoad)), // Clamp between 0 and 100
-      averageRunTime: taskInstances.length > 0 ? actualRunTime / taskInstances.length : 0,
+      cpuLoad: Math.max(0, Math.min(100, cpuLoad)),
+      averageRunTime: taskInstances.length > 0 ? actualRunTime / BigInt(taskInstances.length) : BigInt(0),
       preemptionCount,
-      totalPreemptionTime // Total time this task was paused due to ISRs
+      totalPreemptionTime
     };
 
-    // Apply the calculated stats object to all instances of this task
     taskInstances.forEach(task => {
-      task.stats = stats; // Assign the *same* stats object reference
+      task.stats = stats;
     });
-  }); // End of taskGroups.forEach loop
-
-
-  // *** CORRECTED Summation Logic ***
-  // Log the sum of all calculated CPU loads for verification.
-  // Iterate over the calculated groups, not the original tasks array,
-  // to easily get the unique stats for each task name.
+  });
   let totalCalculatedLoad = 0;
   taskGroups.forEach((instances) => { // Iterate through the map values (arrays of task instances)
       // All instances for a task have the same stats object reference.
@@ -108,22 +93,49 @@ function calculateTaskStats(tasks: TaskData[]): void {
       }
   });
   console.log("Sum of all calculated CPU loads:", totalCalculatedLoad.toFixed(2), "%"); // Format for readability
+}
 
-} 
 export function parseLogFile(content: string): TaskData[] {
   const tasks: TaskData[] = [];
   const regex = /<ITM>(TC|S|E|ISR)\|([0-9A-F]+)\|([^|<]+)(?:\|([^<]+))?(?:\|([^<]+))?<END>/g;
   let match;
-  let lastEndTime: number | null = null;
+  let lastEndTime: bigint | null = null;
   let lastTaskName: string | null = null;
 
-  const taskStarts = new Map<string, number>();
-  const isrStarts = new Map<string, number>();
-  const activeTask = { name: '', startTime: 0, preemptions: [] };
+  const taskStarts = new Map<string, bigint>();
+  const isrStarts = new Map<string, bigint>();
+  const activeTask = { name: '', startTime: BigInt(0), preemptions: [] };
+
+  // Constants for overflow detection
+  const OVERFLOW_THRESHOLD = BigInt("0xF0000000"); // Near the 32-bit boundary
+  let currentOverflowCount = BigInt(0);
+  let lastTimestamp = BigInt(0);
+
+  const parseTimestamp = (hexTimestamp: string): bigint => {
+    const rawTimestamp = BigInt(`0x${hexTimestamp}`);
+    
+    // Check for potential overflow
+    if (lastTimestamp > OVERFLOW_THRESHOLD && rawTimestamp < BigInt("0x10000000")) {
+      // We've detected an overflow, but SysTick hasn't updated the counter yet
+      // Use the current overflow count + 1
+      return rawTimestamp + ((currentOverflowCount + BigInt(1)) << BigInt(32));
+    } else if (lastTimestamp <= OVERFLOW_THRESHOLD && rawTimestamp > OVERFLOW_THRESHOLD) {
+      // Normal timestamp, no overflow
+      return rawTimestamp + (currentOverflowCount << BigInt(32));
+    } else if (rawTimestamp < lastTimestamp && rawTimestamp < BigInt("0x10000000")) {
+      // We've detected that SysTick has updated the counter
+      currentOverflowCount++;
+      return rawTimestamp + (currentOverflowCount << BigInt(32));
+    }
+    
+    // Normal case - no overflow
+    return rawTimestamp + (currentOverflowCount << BigInt(32));
+  };
 
   while ((match = regex.exec(content)) !== null) {
     const [, type, timestamp, name, param1, param2] = match;
-    const time = parseInt(timestamp, 16);
+    const time = parseTimestamp(timestamp);
+    lastTimestamp = time;
 
     // Handle ISR events
     if (type === 'ISR') {
@@ -132,28 +144,25 @@ export function parseLogFile(content: string): TaskData[] {
 
       if (isrState === 'START') {
         isrStarts.set(isrName, time);
-        // If there's an active task, record the ISR preemption
         if (activeTask.name && !activeTask.name.startsWith('ISR:')) {
           activeTask.preemptions.push({
             startTime: time,
-            endTime: 0, // Will be set when ISR ends
+            endTime: BigInt(0),
             isrName
           });
         }
       } else if (isrState === 'END') {
         const startTime = isrStarts.get(isrName);
         if (startTime !== undefined) {
-          // Add ISR task
           tasks.push({
             name: `ISR:${isrName}`,
             startTime,
             endTime: time
           });
           
-          // Update preemption end time if there's an active task
           if (activeTask.name && activeTask.preemptions.length > 0) {
             const lastPreemption = activeTask.preemptions[activeTask.preemptions.length - 1];
-            if (lastPreemption.isrName === isrName && lastPreemption.endTime === 0) {
+            if (lastPreemption.isrName === isrName && lastPreemption.endTime === BigInt(0)) {
               lastPreemption.endTime = time;
             }
           }
@@ -164,12 +173,11 @@ export function parseLogFile(content: string): TaskData[] {
       continue;
     }
 
-    // Add RTOS task switch if there's a gap between tasks
     if (lastEndTime !== null && (type === 'S' || type === 'TC')) {
       const gap = time - lastEndTime;
-      if (gap > 0) {
+      if (gap > BigInt(0)) {
         tasks.push({
-          name: "_RTOS_",
+          name: type === 'TC' ? `RTOS:Create ${name}` : '_RTOS_',
           startTime: lastEndTime,
           endTime: time
         });
@@ -199,10 +207,9 @@ export function parseLogFile(content: string): TaskData[] {
     }
   }
 
-  // Sort tasks by start time
-  tasks.sort((a, b) => a.startTime - b.startTime);
+  // Sort tasks by start time using BigInt comparison
+  tasks.sort((a, b) => (a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0));
 
-  // Calculate statistics for all tasks
   calculateTaskStats(tasks);
 
   return tasks;

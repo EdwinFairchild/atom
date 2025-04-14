@@ -5,7 +5,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { TaskData } from '../types';
 
 interface Event {
-  timestamp: number;
+  timestamp: bigint;
   type: string;
   duration: number;
   info: string;
@@ -28,15 +28,13 @@ const EventTable: React.FC<EventTableProps> = ({ tasks, cpuFrequency, darkMode, 
     const eventList: Event[] = [];
 
     tasks.forEach(task => {
-      // Add task start
       eventList.push({
         timestamp: task.startTime,
         type: task.name.startsWith('ISR:') ? 'ISR' : 'S',
-        duration: (task.endTime - task.startTime) / cpuFrequency,
+        duration: Number(task.endTime - task.startTime) / cpuFrequency,
         info: task.name.startsWith('ISR:') ? task.name.split(':')[1] : task.name
       });
 
-      // Add task end if not an ISR
       if (!task.name.startsWith('ISR:')) {
         eventList.push({
           timestamp: task.endTime,
@@ -46,20 +44,19 @@ const EventTable: React.FC<EventTableProps> = ({ tasks, cpuFrequency, darkMode, 
         });
       }
 
-      // Add preemptions
       if (task.preemptions) {
         task.preemptions.forEach(preemption => {
           eventList.push({
             timestamp: preemption.startTime,
             type: 'ISR',
-            duration: (preemption.endTime - preemption.startTime) / cpuFrequency,
+            duration: Number(preemption.endTime - preemption.startTime) / cpuFrequency,
             info: `${preemption.isrName} (preempted ${task.name})`
           });
         });
       }
     });
 
-    return eventList.sort((a, b) => a.timestamp - b.timestamp);
+    return eventList.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
   }, [tasks, cpuFrequency]);
 
   const filteredEvents = useMemo(() => {
@@ -68,13 +65,13 @@ const EventTable: React.FC<EventTableProps> = ({ tasks, cpuFrequency, darkMode, 
     return events.filter(event => 
       event.type.toLowerCase().includes(term) ||
       event.info.toLowerCase().includes(term) ||
-      (event.timestamp / cpuFrequency).toFixed(6).includes(term) ||
+      (Number(event.timestamp) / cpuFrequency).toFixed(6).includes(term) ||
       event.duration.toFixed(6).includes(term)
     );
   }, [events, searchTerm, cpuFrequency]);
 
-  const formatTime = (cycles: number) => {
-    return (cycles / cpuFrequency).toFixed(6);
+  const formatTime = (cycles: bigint) => {
+    return (Number(cycles) / cpuFrequency).toFixed(6);
   };
 
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
