@@ -185,37 +185,51 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   }, [taskNames]);
 
   // --- Helper: Find Task at Point (Define Before drawSvgComponents) ---
-   const findTaskAtPoint = useCallback((
-       event: MouseEvent,
-       relativeTo: SVGGElement | null,
-       currentXScale: d3.ScaleLinear<number, number>,
-       yScale: d3.ScaleBand<string> | null
-   ): TaskData | null => {
-       if (!relativeTo || !yScale || !dimensions.width || !dimensions.height) return null;
+  const findTaskAtPoint = useCallback((
+    event: MouseEvent,
+    relativeTo: SVGGElement | null, // Should be mainGroup.node()
+    currentXScale: d3.ScaleLinear<number, number>,
+    yScale: d3.ScaleBand<string> | null
+): TaskData | null => {
+    if (!relativeTo || !yScale || !dimensions.width || !dimensions.height) return null;
 
-       const [x, y] = d3.pointer(event, relativeTo);
-       const { width, height } = dimensions;
+    // Get pointer coords relative to the passed element (mainGroup)
+    const [x, y] = d3.pointer(event, relativeTo); // This 'y' is the one we need to check
+    const { width, height } = dimensions;
 
-       if (x < 0 || x > width || y < 0 || y > height) return null;
+    if (x < 0 || x > width || y < 0 || y > height) return null;
 
-       // Find task lane from Y position
-       const bandHeight = yScale.bandwidth();
-       const yDomain = yScale.domain();
-       let targetTaskName: string | null = null;
+    const bandHeight = yScale.bandwidth();
+    const yDomain = yScale.domain();
+    let targetTaskName: string | null = null;
 
-       // Precise check using band range
-       for(const name of yDomain){
-           const bandTop = yScale(name);
-           if (bandTop !== undefined && y >= bandTop && y <= bandTop + bandHeight) {
-               targetTaskName = name;
-               break;
-           }
-       }
+    // --- MORE DEBUG LOGGING ---
+    console.log(`findTaskAtPoint using Y: ${y.toFixed(2)}. Checking against bands:`);
+    // --- END DEBUG LOGGING ---
 
-       if (!targetTaskName) return null;
+    for(const name of yDomain){
+        const bandTop = yScale(name);
+        if (bandTop === undefined) continue; // Skip if name not in scale
 
-       // Find time from X position
-       const time = BigInt(Math.round(currentXScale.invert(x)));
+        const bandEnd = bandTop + bandHeight;
+
+        // --- MORE DEBUG LOGGING ---
+        const isMatch = (y >= bandTop && y <= bandEnd);
+        console.log(`  Task: ${name.padEnd(15)} | bandTop: ${bandTop.toFixed(2)} | bandEnd: ${bandEnd.toFixed(2)} | y>=top? ${y >= bandTop} | y<=end? ${y <= bandEnd} | Match? ${isMatch}`);
+        // --- END DEBUG LOGGING ---
+
+        if (isMatch) {
+            targetTaskName = name;
+            break;
+        }
+    }
+
+    if (!targetTaskName) {
+       console.log(`  No task lane match found for Y = ${y.toFixed(2)}`);
+       return null;
+    }
+
+    const time = BigInt(Math.round(currentXScale.invert(x)));
 
        // Find task instance matching name, time, and Y position
        // Iterate backwards through visible tasks for potentially better performance
@@ -243,67 +257,126 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
 
   // --- Core Drawing Logic Callbacks (Define After Helpers/Data) ---
 
-  const drawCanvasTasks = useCallback(() => {
-    if (!canvasRef.current || !xScaleMain || !yScaleMain || !dimensions.width || !dimensions.height) return;
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  const drawCanvasTasks = useCallback(({
+    // The object properties it expects
+    canvasRef,
+    xScaleMain,
+    yScaleMain,
+    dimensions,
+    mainZoom,
+    visibleTasks,
+    getTaskColor,
+    selectedTask,
+    hoveredTask,
+    darkMode,
+    // Explicitly add margin here if it's constant and defined outside
+    // If margin can change, add it to the props object type and pass it in calls
+} : {
+    // Type definition for the expected object
+    canvasRef: React.RefObject<HTMLCanvasElement>;
+    xScaleMain: d3.ScaleLinear<number, number> | null;
+    yScaleMain: d3.ScaleBand<string> | null;
+    dimensions: { width: number; height: number; containerWidth: number; containerHeight: number; };
+    mainZoom: d3.ZoomTransform;
+    visibleTasks: TaskData[];
+    getTaskColor: (taskName: string) => string;
+    selectedTask: TaskData | null;
+    hoveredTask: TaskData | null;
+    darkMode: boolean;
+    // margin?: { top: number; right: number; bottom: number; left: number; }; // Optional if needed
+}) => {
+    // Ensure all required elements and data are present
+    // Use ?.optionalChaining for refs if preferred, but early return is fine
+    if (!canvasRef.current || !xScaleMain || !yScaleMain || !dimensions.width || !dimensions.height) { // Check plotting dimensions
+      console.warn("drawCanvasTasks: Missing required refs, scales, or dimensions.");
+      return;
+  }
 
-    const { width, height } = dimensions;
-    const dpr = window.devicePixelRatio || 1;
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
 
-    // Clear canvas
-    ctx.clearRect(0, 0, width * dpr, height * dpr);
+  // Use plotting area dimensions directly
+  const { width, height } = dimensions; // No need for containerWidth/Height here
+  const dpr = window.devicePixelRatio || 1;
 
-    // Apply zoom transform to scale
-    const currentXScale = mainZoom.rescaleX(xScaleMain);
-    const bandHeight = yScaleMain.bandwidth();
+  // Set canvas internal resolution based on PLOTTING AREA size
+  if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      // Style width/height are set in JSX now
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Apply scale
+  } else {
+      // Reset transform and scale if size is unchanged
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 
-    // Draw tasks from bottom up (optional, can help with hover if tasks overlap vertically)
-    // If sorting guarantees non-overlap vertically, order doesn't strictly matter
-    [...visibleTasks].reverse().forEach(task => { // Iterate reversed copy
-      const yPos = yScaleMain(task.name);
+  // Clear the canvas based on its OWN logical size [0, width], [0, height]
+  // Physical pixels are width*dpr, height*dpr, but clearRect uses logical size after scaling
+  ctx.clearRect(0, 0, width, height);
+
+  // --- NO Canvas Translation ---
+
+  const currentXScale = mainZoom.rescaleX(xScaleMain); // Maps time -> logical plotting X [0, width]
+  const bandHeight = yScaleMain.bandwidth();
+
+  [...visibleTasks].reverse().forEach(task => {
+      const yPos = yScaleMain(task.name); // Y relative to canvas top [0, height]
       if (yPos === undefined) return;
 
       const segments = getTaskSegments(task);
-      const taskColor = getTaskColor(task.name); // getTaskColor defined above
-
-      const isSelected = selectedTask !== null && task.name === selectedTask.name && task.startTime === selectedTask.startTime;
-      const isHovered = hoveredTask !== null && task.name === hoveredTask.name && task.startTime === hoveredTask.startTime;
+      const taskColor = getTaskColor(task.name);
+      const isSelected = selectedTask?.startTime === task.startTime && selectedTask?.name === task.name;
+      const isHovered = hoveredTask?.startTime === task.startTime && hoveredTask?.name === task.name;
 
       segments.forEach(segment => {
-        const xStart = currentXScale(Number(segment.start));
-        const xEnd = currentXScale(Number(segment.end));
+          const xStart = currentXScale(Number(segment.start)); // X relative to canvas left [0, width]
+          const xEnd = currentXScale(Number(segment.end));
 
-        if (xEnd < 0 || xStart > width) return; // Clip horizontally
+          if (xEnd <= 0 || xStart >= width) return;
 
-        const drawX = Math.max(0, xStart);
-        const drawWidth = Math.max(1, Math.min(xEnd, width) - drawX);
+          const drawX = Math.max(0, xStart); // Use directly as coord relative to canvas 0,0
+          const drawEnd = Math.min(width, xEnd);
+          const drawWidth = Math.max(1, drawEnd - drawX);
 
-        if (drawWidth <= 0) return;
+          if (drawWidth <= 0) return;
 
-        let alpha = segment.isPreempted ? 0.3 : (isSelected || isHovered ? 0.8 : 0.5);
-        if (isSelected) alpha = 1.0;
+          let alpha = segment.isPreempted ? 0.3 : (isSelected || isHovered ? 0.8 : 0.5);
+          if (isSelected) alpha = 1.0;
 
-        ctx.fillStyle = taskColor;
-        ctx.globalAlpha = alpha;
-        ctx.fillRect(drawX, yPos, drawWidth, bandHeight);
+          ctx.fillStyle = taskColor;
+          ctx.globalAlpha = alpha;
 
-        if (!segment.isPreempted && (isSelected || isHovered)) {
-           ctx.globalAlpha = 1.0;
-           ctx.strokeStyle = darkMode ? '#FFFFFF' : '#000000';
-           ctx.lineWidth = isSelected ? 1.5 : 1; // Slightly thicker stroke for selected
-           ctx.strokeRect(drawX + 0.5, yPos + 0.5, drawWidth - 1, bandHeight - 1); // Inset stroke slightly
-        }
+          // --- DRAW USING RELATIVE COORDINATES (No Margin Addition) ---
+          // Coordinates are relative to the canvas element's top-left,
+          // which is already positioned correctly via CSS 'left' and 'top'.
+          ctx.fillRect(drawX, yPos, drawWidth, bandHeight);
+          // --- END ADJUST ---
+
+          if (!segment.isPreempted && (isSelected || isHovered)) {
+              ctx.globalAlpha = 1.0;
+              ctx.strokeStyle = darkMode ? '#FFFFFF' : '#000000';
+              ctx.lineWidth = isSelected ? 1.5 : 1;
+              // Stroke uses relative coords too
+              ctx.strokeRect(drawX + 0.5, yPos + 0.5, drawWidth - 1, bandHeight - 1);
+          }
       });
-    });
-    ctx.globalAlpha = 1.0;
+  });
 
-  }, [
-      visibleTasks, xScaleMain, yScaleMain, mainZoom, getTaskColor, // getTaskColor defined above
-      selectedTask, hoveredTask, dimensions, darkMode
-  ]);
+  ctx.globalAlpha = 1.0;
+
+
+// Dependencies for useCallback
+}, [
+    // List external variables/functions used INSIDE the callback
+    // Refs like canvasRef are stable and don't need to be listed
+    xScaleMain, yScaleMain, dimensions, mainZoom, visibleTasks, getTaskColor,
+    selectedTask, hoveredTask, darkMode,
+    // Add 'margin' here if it's defined outside and could potentially change
+    // If getTaskSegments is defined outside and could change, add it too
+    getTaskSegments
+]);
 
   const drawSvgComponents = useCallback(() => {
       if (!svgRef.current || !xScaleMini || !xScaleMain || !yScaleMain || !dimensions.width || !dimensions.height) return;
@@ -357,6 +430,9 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
           })
           .on("mousemove", (event) => {
               const currentXScale = mainZoom.rescaleX(xScaleMain);
+              const svgPoint = d3.pointer(event); // Coords relative to SVG container
+              const mainGroupPoint = d3.pointer(event, mainGroup.node()); // Coords relative to mainGroup
+              console.log(`SVG Mouse: [${svgPoint[0].toFixed(2)}, ${svgPoint[1].toFixed(2)}] | mainGroup Mouse: [${mainGroupPoint[0].toFixed(2)}, ${mainGroupPoint[1].toFixed(2)}]`);
               const task = findTaskAtPoint(event, mainGroup.node(), currentXScale, yScaleMain);
               setHoveredTask(task); // Update state, triggers canvas redraw via effect
 
@@ -632,7 +708,19 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
       }
 
       // 3. Draw tasks onto the canvas
-      drawCanvasTasks();
+      drawCanvasTasks({ // Pass the required object
+        canvasRef,
+        xScaleMain,
+        yScaleMain,
+        dimensions,
+        mainZoom,
+        visibleTasks,
+        getTaskColor,
+        selectedTask,
+        hoveredTask,
+        darkMode
+        // Pass margin here if needed by the function's type def
+    });
 
   }, [
       tasks, // Redraw if tasks change
@@ -649,7 +737,19 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   useEffect(() => {
       // Avoid drawing if scales aren't ready
       if (!xScaleMain || !yScaleMain) return;
-      drawCanvasTasks();
+      drawCanvasTasks({ // Pass the required object again
+        canvasRef,
+        xScaleMain,
+        yScaleMain,
+        dimensions,
+        mainZoom,
+        visibleTasks,
+        getTaskColor,
+        selectedTask,
+        hoveredTask,
+        darkMode
+        // Pass margin here if needed
+    });
   }, [mainZoom, selectedTask, hoveredTask, darkMode, drawCanvasTasks, xScaleMain, yScaleMain]); // Added scale checks
 
 
@@ -691,31 +791,35 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
 
   // --- Render ---
   return (
-    <div ref={containerRef} className="timeline-container w-full h-full glass-morphism rounded-md overflow-hidden relative">
+    <div ref={containerRef} className="timeline-container w-full h-full rounded-md overflow-hidden relative">
         {/* Canvas for tasks (drawn first, underneath) */}
         <canvas
             ref={canvasRef}
             style={{
                 position: 'absolute',
+                // POSITION the canvas element using margins
                 left: `${margin.left}px`,
                 top: `${margin.top}px`,
-                pointerEvents: 'none' // Canvas does not capture mouse events directly
+                // SIZE the canvas element to the plotting area
+                width: `${dimensions.width}px`,   // Use plotting width
+                height: `${dimensions.height}px`, // Use plotting height
+                pointerEvents: 'none'
             }}
+            // Width/Height attributes set dynamically for resolution
         />
         {/* SVG for axes, interactions, overlays (drawn on top) */}
         <svg
             ref={svgRef}
-            className="w-full h-full"
+            className="w-full h-full" // SVG still covers the whole container
             style={{
-                position: 'absolute', // Positioned to cover the container
+                position: 'absolute',
                 left: 0,
-                top: 0,
-                // SVG captures events via its children (background rect, indicator)
+                top: 0
             }}
         >
-            {/* D3 will populate this SVG */}
+            {/* D3 populates SVG, mainGroup is translated */}
         </svg>
-        {/* Tooltip div is positioned relative to containerRef by D3 */}
+        {/* Tooltip div */}
     </div>
   );
 };
