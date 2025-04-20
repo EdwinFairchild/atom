@@ -43,7 +43,9 @@ body {
 }
 
 body.dark {
-  background: linear-gradient(135deg, #1a1b1e 0%, #2d2f34 100%);
+  /* background: linear-gradient(135deg, #1a1b1e 0%, #2d2f34 100%); */
+  background-image: url('/background_dark.png');
+
 }
 
 .sidebar-transition {
