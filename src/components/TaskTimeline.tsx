@@ -442,17 +442,22 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
         crosshairRef.current = null;
       }
 
-      // --- Mini Timeline ---
+      // --- Mini Timeline main section ---
       miniTimelineRef.current = svg.append("g") // Store ref
           .attr("class", "mini-timeline")
-          .attr("transform", `translate(${margin.left},${height + margin.top + spaceBetweenCharts})`)
+          .attr("transform", `translate(${margin.left},${height + margin.top + spaceBetweenCharts + 30})`)
           .node();
 
       const miniTimelineGroup = d3.select(miniTimelineRef.current);
 
       miniTimelineGroup.append("rect") // Background
-          .attr("x", 0).attr("y", 0).attr("width", width).attr("height", miniTimelineHeight)
-          .attr("fill", darkMode ? "#374151" : "#F3F4F6").attr("rx", 4);
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("width", width)
+        .attr("height", miniTimelineHeight)
+        .attr("fill", darkMode ? "#374151" : "#E5E7EB") // Adjust color (example: light gray for light mode)
+        .attr("fill-opacity", 0.1) // Set opacity (0 to 1, 0.7 for slight transparency)
+        .attr("rx", 4); // Rounded corners
 
       // --- Density Plot (SVG version) ---
       const binSize = Math.max(1, width / 200);
@@ -485,14 +490,18 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
       // --- End Density Plot ---
 
 
-      // --- Window Indicator ---
+      // --- Window Indicator : small grabber window---
       const windowIndicator = miniTimelineGroup.append("rect")
-          .attr("class", "window-indicator")
-          .attr("y", 0).attr("height", miniTimelineHeight)
-          .attr("fill", darkMode ? "#4B5563" : "#E5E7EB").attr("fill-opacity", 0.3)
-          .attr("stroke", darkMode ? "#6B7280" : "#9CA3AF").attr("stroke-width", 2)
-          .attr("rx", 4).style("cursor", "grab").style("pointer-events", "all");
-
+    .attr("class", "window-indicator")
+    .attr("y", 0)
+    .attr("height", miniTimelineHeight)
+    .attr("fill", "#FF0000") // Set fill to red
+    .attr("fill-opacity", 0.1) // Adjust transparency (0 to 1, where 0.3 is semi-transparent)
+    .attr("stroke", "#FF0000") // Solid red border
+    .attr("stroke-width", 2) // Border thickness
+    .attr("rx", 4) // Rounded corners
+    .style("cursor", "grab")
+    .style("pointer-events", "all");
       const updateWindowIndicator = () => {
           if (!xScaleMini) return;
           const x = xScaleMini(windowPosition);
