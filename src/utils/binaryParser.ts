@@ -26,7 +26,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
     const isrStartMap = new Map<number, bigint>();
     let activeTaskId: number | null = null;
 
-    console.log(`Parsing binary log buffer of size: ${content.length} bytes`);
+    //console.log(`Parsing binary log buffer of size: ${content.length} bytes`);
 
     try {
         while (offset < content.length) {
@@ -35,7 +35,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
             // --- Handle Setup Packets ---
             if (packetType >= 0x70 && packetType <= 0x7F) {
                 if (offset + 3 > content.length) {
-                    console.warn(`Incomplete setup packet header at offset ${offset}`);
+                    //console.warn(`Incomplete setup packet header at offset ${offset}`);
                     break;
                 }
                 const setupCode = packetType;
@@ -43,7 +43,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
                 const nameLen = content.readUInt8(offset + 2);
 
                 if (offset + 3 + nameLen > content.length) {
-                    console.warn(`Incomplete setup packet data at offset ${offset}`);
+                    //console.warn(`Incomplete setup packet data at offset ${offset}`);
                     break;
                 }
 
@@ -51,22 +51,22 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
 
                 if (setupCode === PROF_SETUP_TASK_MAP) {
                     taskNameMap.set(id, name);
-                    console.log(`MAP Task ID ${id} -> "${name}"`);
+                    //console.log(`MAP Task ID ${id} -> "${name}"`);
                 } else if (setupCode === PROF_SETUP_ISR_MAP) {
                     isrNameMap.set(id, name);
-                    console.log(`MAP ISR ID ${id} -> "${name}"`);
+                    //console.log(`MAP ISR ID ${id} -> "${name}"`);
                 } else if (setupCode === PROF_SETUP_INFO) {
-                    console.log(`INFO: "${name}"`);
+                    //console.log(`INFO: "${name}"`);
                     if (name.startsWith("CLK:")) {
                         try {
                             cpuFrequency = parseInt(name.substring(4), 10);
-                            console.log(`Parsed CPU Frequency: ${cpuFrequency} Hz`);
+                            //console.log(`Parsed CPU Frequency: ${cpuFrequency} Hz`);
                         } catch (e) {
-                            console.warn("Could not parse CPU frequency");
+                            //console.warn("Could not parse CPU frequency");
                         }
                     }
                 } else {
-                    console.warn(`Unknown setup code ${setupCode.toString(16)} at offset ${offset}`);
+                    //console.warn(`Unknown setup code ${setupCode.toString(16)} at offset ${offset}`);
                 }
 
                 offset += 3 + nameLen;
@@ -76,7 +76,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
             // --- Handle Event Packets (10 bytes) ---
             const packetSize = 10;
             if (offset + packetSize > content.length) {
-                console.warn(`Incomplete event packet at offset ${offset}`);
+                //console.warn(`Incomplete event packet at offset ${offset}`);
                 break;
             }
 
@@ -108,7 +108,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
                         taskStartMap.set(id, { startTime: timestamp, preemptions: [] });
                         activeTaskId = id;
                         lastEndTime = null;
-                        console.log(`[${timestamp}] Task START: ${taskName} (${id})`);
+                        //console.log(`[${timestamp}] Task START: ${taskName} (${id})`);
                     } else {
                         // Task END
                         const startInfo = taskStartMap.get(id);
@@ -122,7 +122,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
                             taskStartMap.delete(id);
                             lastEndTime = timestamp;
                         } else {
-                            console.warn(`Task END event for ID ${id} (${taskName}) without START at ${timestamp}`);
+                            //console.warn(`Task END event for ID ${id} (${taskName}) without START at ${timestamp}`);
                         }
                         if (activeTaskId === id) {
                             activeTaskId = null;
@@ -141,7 +141,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
                         preemptions: []
                     });
                     lastEndTime = timestamp;
-                    console.log(`[${timestamp}] Task CREATE: ${taskName} (${id})`);
+                    //console.log(`[${timestamp}] Task CREATE: ${taskName} (${id})`);
                     break;
                 }
 
@@ -159,10 +159,10 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
                                     isrName
                                 });
                             } else {
-                                console.warn(`ISR ENTER ${isrName} for activeTaskId=${activeTaskId}, but no start info`);
+                                //console.warn(`ISR ENTER ${isrName} for activeTaskId=${activeTaskId}, but no start info`);
                             }
                         }
-                        console.log(`[${timestamp}] ISR ENTER: ${isrName} (${id})`);
+                        //console.log(`[${timestamp}] ISR ENTER: ${isrName} (${id})`);
                     } else {
                         // ISR EXIT
                         const startTime = isrStartMap.get(id);
@@ -184,20 +184,20 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
                                     if (openPreemption) {
                                         openPreemption.endTime = timestamp;
                                     } else {
-                                        console.warn(`ISR EXIT ${isrName} for task ${activeTaskId}, no matching preemption`);
+                                        //console.warn(`ISR EXIT ${isrName} for task ${activeTaskId}, no matching preemption`);
                                     }
                                 }
                             }
                         } else {
-                            console.warn(`ISR EXIT for ID ${id} (${isrName}) without ENTER at ${timestamp}`);
+                            //console.warn(`ISR EXIT for ID ${id} (${isrName}) without ENTER at ${timestamp}`);
                         }
-                        console.log(`[${timestamp}] ISR EXIT: ${isrName} (${id})`);
+                        //console.log(`[${timestamp}] ISR EXIT: ${isrName} (${id})`);
                     }
                     break;
                 }
 
                 default:
-                    console.warn(`Unknown event type ${eventType.toString(16)} at offset ${offset}`);
+                    //console.warn(`Unknown event type ${eventType.toString(16)} at offset ${offset}`);
                     break;
             }
 
@@ -205,22 +205,22 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
         }
 
     } catch (e: any) {
-        console.error(`Error parsing binary log at offset ${offset}:`, e);
+        //console.error(`Error parsing binary log at offset ${offset}:`, e);
         // Continue with parsed tasks instead of returning empty array
     }
 
-    console.log(`Finished parsing. Found ${tasks.length} timeline entries.`);
-    console.log(`Task Name Map:`, taskNameMap);
-    console.log(`ISR Name Map:`, isrNameMap);
+    //console.log(`Finished parsing. Found ${tasks.length} timeline entries.`);
+    //console.log(`Task Name Map:`, taskNameMap);
+    //console.log(`ISR Name Map:`, isrNameMap);
 
     // Handle unclosed tasks
     taskStartMap.forEach((startInfo, id) => {
         const taskName = taskNameMap.get(id) || `TaskID_${id}`;
-        console.warn(`Task "${taskName}" (ID: ${id}) started at ${startInfo.startTime} but never ended`);
+        //console.warn(`Task "${taskName}" (ID: ${id}) started at ${startInfo.startTime} but never ended`);
     });
 
     if (tasks.length === 0) {
-        console.warn("No valid task/ISR entries generated");
+        //console.warn("No valid task/ISR entries generated");
         return [];
     }
 
@@ -236,7 +236,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
 // --- Calculate Task Stats (aligned with old parser) ---
 function calculateTaskStats(tasks: TaskData[]): void {
     if (!tasks || tasks.length === 0) {
-        console.warn("calculateTaskStats: No tasks to process");
+        //console.warn("calculateTaskStats: No tasks to process");
         return;
     }
 
@@ -246,7 +246,7 @@ function calculateTaskStats(tasks: TaskData[]): void {
     const totalTimelineDuration = timelineEnd - timelineStart;
 
     if (totalTimelineDuration <= 0n) {
-        console.error("Invalid timeline duration:", totalTimelineDuration);
+        //console.error("Invalid timeline duration:", totalTimelineDuration);
         tasks.forEach(task => {
             task.stats = createDefaultStats();
         });
@@ -311,7 +311,7 @@ function calculateTaskStats(tasks: TaskData[]): void {
             totalCalculatedLoad += instances[0].stats.cpuLoad;
         }
     });
-    console.log("Sum of all calculated CPU loads:", totalCalculatedLoad.toFixed(2), "%");
+    //console.log("Sum of all calculated CPU loads:", totalCalculatedLoad.toFixed(2), "%");
 }
 
 // --- Default Stats ---
