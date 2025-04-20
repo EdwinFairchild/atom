@@ -256,7 +256,30 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
 
 
   // --- Core Drawing Logic Callbacks (Define After Helpers/Data) ---
+// Helper function to draw a rounded rectangle path
+function pathRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  // Clamp radius to prevent issues on small rectangles
+  const effectiveRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
 
+  ctx.beginPath();
+  ctx.moveTo(x + effectiveRadius, y);
+  ctx.lineTo(x + width - effectiveRadius, y);
+  ctx.arcTo(x + width, y, x + width, y + effectiveRadius, effectiveRadius);
+  ctx.lineTo(x + width, y + height - effectiveRadius);
+  ctx.arcTo(x + width, y + height, x + width - effectiveRadius, y + height, effectiveRadius);
+  ctx.lineTo(x + effectiveRadius, y + height);
+  ctx.arcTo(x, y + height, x, y + height - effectiveRadius, effectiveRadius);
+  ctx.lineTo(x, y + effectiveRadius);
+  ctx.arcTo(x, y, x + effectiveRadius, y, effectiveRadius);
+  ctx.closePath();
+}
 
   const drawCanvasTasks = useCallback(({
     // The object properties it expects
@@ -288,7 +311,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
 }) => {
     // Ensure all required elements and data are present
     // Use ?.optionalChaining for refs if preferred, but early return is fine
-    if (!canvasRef.current || !xScaleMain || !yScaleMain || !dimensions.width || !dimensions.height) { // Check plotting dimensions
+    if (!canvasRef.current || !xScaleMain || !yScaleMain || !dimensions.width || !dimensions.height) {
       console.warn("drawCanvasTasks: Missing required refs, scales, or dimensions.");
       return;
   }
@@ -297,75 +320,114 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Use plotting area dimensions directly
-  const { width, height } = dimensions; // No need for containerWidth/Height here
+  const { width, height } = dimensions;
   const dpr = window.devicePixelRatio || 1;
 
-  // Set canvas internal resolution based on PLOTTING AREA size
+  // ... (Canvas size and scaling logic - keep as is) ...
   if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
       canvas.width = width * dpr;
       canvas.height = height * dpr;
-      // Style width/height are set in JSX now
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Apply scale
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   } else {
-      // Reset transform and scale if size is unchanged
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  // Clear the canvas based on its OWN logical size [0, width], [0, height]
-  // Physical pixels are width*dpr, height*dpr, but clearRect uses logical size after scaling
   ctx.clearRect(0, 0, width, height);
 
-  // --- NO Canvas Translation ---
-
-  const currentXScale = mainZoom.rescaleX(xScaleMain); // Maps time -> logical plotting X [0, width]
+  const currentXScale = mainZoom.rescaleX(xScaleMain);
   const bandHeight = yScaleMain.bandwidth();
+  // const cornerRadius = 4; // REMOVED
+  const glowBlur = 8;
+  const normalFillAlpha = 0.15; // Alpha for default transparent fill
+  const preemptedFillAlpha = 0.1;
+  const normalLineWidth = 1;
+  const selectedLineWidth = 1.5;
 
+  // --- Loop through tasks and segments ---
   [...visibleTasks].reverse().forEach(task => {
-      const yPos = yScaleMain(task.name); // Y relative to canvas top [0, height]
+      const yPos = yScaleMain(task.name);
       if (yPos === undefined) return;
 
-      const segments = getTaskSegments(task);
+      const segments = getTaskSegments(task); // Assuming getTaskSegments is available
       const taskColor = getTaskColor(task.name);
       const isSelected = selectedTask?.startTime === task.startTime && selectedTask?.name === task.name;
       const isHovered = hoveredTask?.startTime === task.startTime && hoveredTask?.name === task.name;
 
       segments.forEach(segment => {
-          const xStart = currentXScale(Number(segment.start)); // X relative to canvas left [0, width]
+          const xStart = currentXScale(Number(segment.start));
           const xEnd = currentXScale(Number(segment.end));
 
           if (xEnd <= 0 || xStart >= width) return;
 
-          const drawX = Math.max(0, xStart); // Use directly as coord relative to canvas 0,0
+          const drawX = Math.max(0, xStart);
           const drawEnd = Math.min(width, xEnd);
-          const drawWidth = Math.max(1, drawEnd - drawX);
+          const drawWidth = Math.max(1, drawEnd - drawX); // Ensure min width 1px
 
           if (drawWidth <= 0) return;
 
-          let alpha = segment.isPreempted ? 0.3 : (isSelected || isHovered ? 0.8 : 0.5);
-          if (isSelected) alpha = 1.0;
+          const isPreempted = segment.isPreempted;
 
-          ctx.fillStyle = taskColor;
-          ctx.globalAlpha = alpha;
+          // --- Reset context properties ---
+          ctx.shadowBlur = 0;
+          ctx.shadowColor = 'transparent';
+          ctx.globalAlpha = 1.0; // Start full alpha
 
-          // --- DRAW USING RELATIVE COORDINATES (No Margin Addition) ---
-          // Coordinates are relative to the canvas element's top-left,
-          // which is already positioned correctly via CSS 'left' and 'top'.
-          ctx.fillRect(drawX, yPos, drawWidth, bandHeight);
-          // --- END ADJUST ---
+          // --- Use fillRect and strokeRect ---
 
-          if (!segment.isPreempted && (isSelected || isHovered)) {
-              ctx.globalAlpha = 1.0;
-              ctx.strokeStyle = darkMode ? '#FFFFFF' : '#000000';
-              ctx.lineWidth = isSelected ? 1.5 : 1;
-              // Stroke uses relative coords too
-              ctx.strokeRect(drawX + 0.5, yPos + 0.5, drawWidth - 1, bandHeight - 1);
+          if (isSelected) {
+              // Selected State: Solid fill, potentially different border
+              ctx.fillStyle = taskColor;
+              ctx.globalAlpha = 1.0; // Fully opaque fill
+              ctx.fillRect(drawX, yPos, drawWidth, bandHeight); // Use fillRect
+
+              ctx.strokeStyle = darkMode ? '#FFFFFF' : '#000000'; // White/Black border
+              ctx.lineWidth = selectedLineWidth;
+              ctx.strokeRect(drawX + 0.5, yPos + 0.5, drawWidth - 1, bandHeight - 1); // Inset strokeRect
+
+          } else if (isHovered && !isPreempted) {
+              // Hover State (Not Preempted): Transparent fill, solid border, glow
+              ctx.fillStyle = taskColor;
+              ctx.globalAlpha = normalFillAlpha; // Transparent fill
+              ctx.fillRect(drawX, yPos, drawWidth, bandHeight); // Use fillRect
+
+              // Setup Glow
+              ctx.shadowColor = taskColor;
+              ctx.shadowBlur = glowBlur;
+
+              // Draw Solid Border (will have glow applied)
+              ctx.strokeStyle = taskColor;
+              ctx.lineWidth = normalLineWidth;
+              ctx.globalAlpha = 1.0; // Border is opaque
+              ctx.strokeRect(drawX, yPos, drawWidth, bandHeight); // Use strokeRect (no inset needed unless desired)
+
+              // IMPORTANT: Reset shadow immediately
+              ctx.shadowBlur = 0;
+              ctx.shadowColor = 'transparent';
+
+          } else if (isPreempted) {
+               // Preempted State: Very faint fill
+               ctx.fillStyle = taskColor;
+               ctx.globalAlpha = preemptedFillAlpha; // Very transparent fill
+               ctx.fillRect(drawX, yPos, drawWidth, bandHeight); // Use fillRect
+               // No border for preempted by default, add if needed
+
+          } else {
+              // Normal State (Not Selected, Not Hovered, Not Preempted)
+              ctx.fillStyle = taskColor;
+              ctx.globalAlpha = normalFillAlpha; // Transparent fill
+              ctx.fillRect(drawX, yPos, drawWidth, bandHeight); // Use fillRect
+
+              // Draw Solid Border
+              ctx.strokeStyle = taskColor;
+              ctx.lineWidth = normalLineWidth;
+              ctx.globalAlpha = 1.0; // Border is opaque
+              ctx.strokeRect(drawX, yPos, drawWidth, bandHeight); // Use strokeRect
           }
-      });
-  });
+      }); // End segments loop
+  }); // End tasks loop
 
+  // Final reset of globalAlpha
   ctx.globalAlpha = 1.0;
-
 
 // Dependencies for useCallback
 }, [
