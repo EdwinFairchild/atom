@@ -21,8 +21,9 @@ const margin = {
     bottom: 120, // Adjusted based on miniTimelineHeight, spaceBetweenCharts, axis space
     left: 120
 };
-const miniTimelineHeight = 60;
+const miniTimelineHeight = 40;
 const spaceBetweenCharts = 40;
+
 
 // Helper function to get task segments (remains the same)
 const getTaskSegments = (task: TaskData) => {
@@ -76,6 +77,18 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
   const [mainZoom, setMainZoom] = useState<d3.ZoomTransform>(d3.zoomIdentity);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0, containerWidth: 0, containerHeight: 0 });
   const [hoveredTask, setHoveredTask] = useState<TaskData | null>(null);
+  
+  const firstAppearanceTimes = useMemo(() => {
+    const map = new Map<string, bigint>();
+    if (!tasks || tasks.length === 0) return map;
+
+    tasks.forEach(task => {
+        if (!map.has(task.name) || task.startTime < map.get(task.name)!) {
+            map.set(task.name, task.startTime);
+        }
+    });
+    return map;
+}, [tasks]);
 
   // --- Memoized Data Calculations (Define before hooks that use them) ---
 
@@ -95,27 +108,53 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({
     return estimatedWidth;
   }, [tasks, timeDomain]);
 
-  const taskNames = useMemo(() => {
-    if (!tasks.length) return [];
-    // Sort task names for consistent Y-axis ordering
-    return Array.from(new Set(tasks.map(t => t.name))).sort((a, b) => {
-      if (!a || !b) return 0;
-      if (a.startsWith('ISR:') && !b.startsWith('ISR:')) return -1;
-      if (!a.startsWith('ISR:') && b.startsWith('ISR:')) return 1;
-      if (a === '_RTOS_' || a.startsWith('RTOS:')) {
-        if (b === '_RTOS_' || b.startsWith('RTOS:')) {
-          if (a.startsWith('RTOS:Create') && !b.startsWith('RTOS:Create')) return 1;
-          if (!a.startsWith('RTOS:Create') && b.startsWith('RTOS:Create')) return -1;
-          return a.localeCompare(b);
+ const taskNames = useMemo(() => {
+    if (!tasks || tasks.length === 0) return [];
+
+    const uniqueNames = Array.from(new Set(tasks.map(t => t.name)));
+
+    // Define sort categories (lower number = higher on the screen)
+    const getSortCategory = (name: string): number => {
+        if (name === '_RTOS_') return 5;       // Bottom-most
+        if (name.startsWith('ISR:')) return 4; // Above RTOS
+        if (name === 'RTOS:Create') return 3;  // Above ISRs
+        // Add other specific tasks if needed, e.g.:
+         if (name === 'IDLE') return 2;
+        return 1;                          // All other tasks are category 1 (top-most group)
+    };
+
+    uniqueNames.sort((a, b) => {
+        const categoryA = getSortCategory(a);
+        const categoryB = getSortCategory(b);
+
+        // Sort primarily by category (lower number = higher on screen)
+        if (categoryA !== categoryB) {
+            return categoryA - categoryB;
         }
-        return 1;
-      }
-      if (b === '_RTOS_' || b.startsWith('RTOS:')) return -1;
-      if (a === 'IDLE') return b === '_RTOS_' || b.startsWith('RTOS:') ? -1 : 1;
-      if (b === 'IDLE') return a === '_RTOS_' || a.startsWith('RTOS:') ? 1 : -1;
-      return a.localeCompare(b);
+
+        // Secondary sort within the same category
+        if (categoryA === 1) {
+            // For 'Other Tasks' (category 1), sort by first appearance time
+            // Use BigInt comparison directly or convert to Number if safe
+            const timeA = firstAppearanceTimes.get(a) ?? 0n; // Default to 0 if not found
+            const timeB = firstAppearanceTimes.get(b) ?? 0n;
+            // Earlier start time appears higher
+            if (timeA < timeB) return -1;
+            if (timeA > timeB) return 1;
+            return 0; // Should ideally not happen if names are unique
+        } else if (categoryA === 3) {
+             // For ISRs (category 3), sort alphabetically as a tie-breaker
+             return a.localeCompare(b);
+        }
+        // Add other tie-breakers if needed for other categories
+
+        // Default tie-breaker (shouldn't be reached if categories cover all)
+        return a.localeCompare(b);
     });
-  }, [tasks]);
+
+    return uniqueNames; // This sorted array goes into yScaleMain.domain()
+
+}, [tasks, firstAppearanceTimes]); // Add firstAppearanceTimes as dependency
 
   // --- Scales (Define after dimensions and taskNames) ---
   const xScaleMini = useMemo(() => {
@@ -337,10 +376,11 @@ function pathRoundedRect(
   const currentXScale = mainZoom.rescaleX(xScaleMain);
   const bandHeight = yScaleMain.bandwidth();
   // const cornerRadius = 4; // REMOVED
-  const glowBlur = 8;
+  const glowBlur = 12;
   const normalFillAlpha = 0.15; // Alpha for default transparent fill
+  const hoverFillAlpha = 0.8; // Alpha for hover state
   const preemptedFillAlpha = 0.1;
-  const normalLineWidth = 1;
+  const normalLineWidth = 1.5;
   const selectedLineWidth = 1.5;
 
   // --- Loop through tasks and segments ---
@@ -387,7 +427,7 @@ function pathRoundedRect(
           } else if (isHovered && !isPreempted) {
               // Hover State (Not Preempted): Transparent fill, solid border, glow
               ctx.fillStyle = taskColor;
-              ctx.globalAlpha = normalFillAlpha; // Transparent fill
+              ctx.globalAlpha = hoverFillAlpha; // Transparent fill
               ctx.fillRect(drawX, yPos, drawWidth, bandHeight); // Use fillRect
 
               // Setup Glow
@@ -853,7 +893,7 @@ function pathRoundedRect(
 
   // --- Render ---
   return (
-    <div ref={containerRef} className="timeline-container w-full h-full rounded-md overflow-hidden relative">
+    <div ref={containerRef} className="timeline-container w-full h-full glass-morphism  rounded-md overflow-hidden relative">
         {/* Canvas for tasks (drawn first, underneath) */}
         <canvas
             ref={canvasRef}

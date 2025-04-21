@@ -135,7 +135,7 @@ export function parseBinaryLogFile(content: Buffer): TaskData[] {
                     const taskName = taskNameMap.get(id) || `TaskID_${id}`;
                     // Create a synthetic task for task creation, matching old parser
                     tasks.push({
-                        name: `RTOS:Create ${taskName}`,
+                        name: `RTOS:Create`,
                         startTime: timestamp,
                         endTime: timestamp,
                         preemptions: []
