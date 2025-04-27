@@ -75,7 +75,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
           </div>
 
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <label className="text-sm font-medium text-gray-900 dark:text-white">Window Size (tasks)</label>
             <input
               type="number"
@@ -86,7 +86,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onChange={(e) => setWindowSize(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-md bg-white/10 border border-gray-200 dark:border-white/20 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 dark:text-white"
             />
-          </div>
+          </div> */}
 
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium text-gray-900 dark:text-white">Show Crosshair</label>

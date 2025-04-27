@@ -43,7 +43,9 @@ body {
 }
 
 body.dark {
+  /* background: linear-gradient(135deg, #1a1b1e 0%, #2d2f34 100%); */
   background-image: url('/background_dark.png');
+
 }
 
 .sidebar-transition {
@@ -87,4 +89,18 @@ body.dark {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+/* Tooltip styles */
+.tooltip {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+}
+
+.dark .tooltip {
+  background: rgba(31, 32, 33, 0.15);
+  border-color: rgba(255, 255, 255, 0.1);
 }
