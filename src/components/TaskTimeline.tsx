@@ -379,7 +379,7 @@ function pathRoundedRect(
   const glowBlur = 12;
   const normalFillAlpha = 0.15; // Alpha for default transparent fill
   const hoverFillAlpha = 0.8; // Alpha for hover state
-  const preemptedFillAlpha = 0.1;
+  const preemptedFillAlpha = 0.2;
   const normalLineWidth = 1.5;
   const selectedLineWidth = 1.5;
 
